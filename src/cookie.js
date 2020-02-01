@@ -10,14 +10,16 @@ import baseCookie from './base-cookie';
 
 var _options = {
   expirationDays: undefined,
-  domain: undefined
+  domain: undefined,
+  path: '/',
 };
 
 
 var reset = function() {
   _options = {
     expirationDays: undefined,
-    domain: undefined
+    domain: undefined,
+    path: '/',
   };
 };
 
@@ -70,6 +72,7 @@ var options = function(opts) {
 
   _options.expirationDays = opts.expirationDays;
   _options.secure = opts.secure;
+  _options.path = opts.path;
 
   var domain = (!utils.isEmptyString(opts.domain)) ? opts.domain : '.' + topDomain(getLocation().href);
   var token = Math.random();

@@ -98,6 +98,7 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
       expirationDays: this.options.cookieExpiration,
       domain: this.options.domain,
       secure: this.options.secureCookie,
+      path: this.options.path,
     });
     this.options.domain = this.cookieStorage.options().domain;
 
@@ -784,7 +785,8 @@ AmplitudeClient.prototype.setDomain = function setDomain(domain) {
     this.cookieStorage.options({
       expirationDays: this.options.cookieExpiration,
       secure: this.options.secureCookie,
-      domain: domain
+      domain: domain,
+      path: this.options.path,
     });
     this.options.domain = this.cookieStorage.options().domain;
     _loadCookieData(this);

@@ -32,7 +32,7 @@ const set = (name, value, opts) => {
   if (expires) {
     str += '; expires=' + expires.toUTCString();
   }
-  str += '; path=/';
+  str += '; path=' + opts.path;
   if (opts.domain) {
     str += '; domain=' + opts.domain;
   }

@@ -40,16 +40,19 @@ cookieStorage.prototype.getStorage = function() {
     // note: localstorage does not persist across subdomains
     var keyPrefix = 'amp_cookiestore_';
     this.storage = {
+      _prefix: keyPrefix,
       _options: {
         expirationDays: undefined,
         domain: undefined,
         secure: false,
+        path: '/',
       },
       reset: function() {
         this._options = {
           expirationDays: undefined,
           domain: undefined,
           secure: false,
+          path: '/',
         };
       },
       options: function(opts) {
@@ -60,18 +63,23 @@ cookieStorage.prototype.getStorage = function() {
         this._options.expirationDays = opts.expirationDays || this._options.expirationDays;
         // localStorage is specific to subdomains
         this._options.domain = opts.domain || this._options.domain || (window && window.location && window.location.hostname);
+        this._options.path = opts.path || this._options.path || '/';
+        if (this._options.path) {
+          var pathInPrefix = this._options.path === '/' ? '' : ('_' + this._options.path.replace(/\//gi, '') + '_');
+          this._prefix = keyPrefix + pathInPrefix;
+        }
         return this._options.secure = opts.secure || false;
       },
       get: function(name) {
         try {
-          return JSON.parse(localStorage.getItem(keyPrefix + name));
+          return JSON.parse(localStorage.getItem(this._prefix + name));
         } catch (e) {
         }
         return null;
       },
       set: function(name, value) {
         try {
-          localStorage.setItem(keyPrefix + name, JSON.stringify(value));
+          localStorage.setItem(this._prefix + name, JSON.stringify(value));
           return true;
         } catch (e) {
         }
@@ -79,7 +87,7 @@ cookieStorage.prototype.getStorage = function() {
       },
       remove: function(name) {
         try {
-          localStorage.removeItem(keyPrefix + name);
+          localStorage.removeItem(this._prefix + name);
         } catch (e) {
           return false;
         }
