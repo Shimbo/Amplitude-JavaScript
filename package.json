@@ -9,7 +9,7 @@
     "amplitude"
   ],
   "repository": "git://github.com/amplitude/amplitude-javascript.git",
-  "main": "amplitude.js",
+  "main": "dist/amplitude-5.8.0.js",
   "react-native": "amplitude.native.js",
   "dependencies": {
     "@amplitude/ua-parser-js": "0.7.20",
