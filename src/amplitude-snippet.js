@@ -2,10 +2,10 @@
   var amplitude = window.amplitude || {'_q':[],'_iq':{}};
   var as = document.createElement('script');
   as.type = 'text/javascript';
-  as.integrity = 'sha384-hiPy0xcTcOsU7l+oUXb4dx8Nt3DhL2ux3bPZ9cmOGDp8WIJRguM2NrkiL8orkPxu';
+  as.integrity = 'sha384-yeDu1GYGzNa2H+lAFpTefEBrRjwsHi7AIHNJ7puYxUntJGOSBwlgLJGQkkgO4yAx';
   as.crossOrigin = 'anonymous';
   as.async = true;
-  as.src = 'https://cdn.amplitude.com/libs/amplitude-5.9.0-min.gz.js';
+  as.src = 'https://cdn.amplitude.com/libs/amplitude-5.10.0-min.gz.js';
   as.onload = function() {if(!window.amplitude.runQueuedFunctions) {console.log('[Amplitude] Error: could not load SDK');}};
   var s = document.getElementsByTagName('script')[0];
   s.parentNode.insertBefore(as, s);
