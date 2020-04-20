@@ -2,10 +2,10 @@
   var amplitude = window.amplitude || {'_q':[],'_iq':{}};
   var as = document.createElement('script');
   as.type = 'text/javascript';
-  as.integrity = 'sha384-yeDu1GYGzNa2H+lAFpTefEBrRjwsHi7AIHNJ7puYxUntJGOSBwlgLJGQkkgO4yAx';
+  as.integrity = 'sha384-BGepaZUxfr2bjdjvWUNUDFdhyWYFdUrqNbzq27rcZxULujlO0pU8Jg4SXZGgVV1O';
   as.crossOrigin = 'anonymous';
   as.async = true;
-  as.src = 'https://cdn.amplitude.com/libs/amplitude-5.10.0-min.gz.js';
+  as.src = 'https://cdn.amplitude.com/libs/amplitude-5.11.0-min.gz.js';
   as.onload = function() {if(!window.amplitude.runQueuedFunctions) {console.log('[Amplitude] Error: could not load SDK');}};
   var s = document.getElementsByTagName('script')[0];
   s.parentNode.insertBefore(as, s);
@@ -18,14 +18,10 @@
   var identifyFuncs = ['add', 'append', 'clearAll', 'prepend', 'set', 'setOnce', 'unset'];
   for (var i = 0; i < identifyFuncs.length; i++) {proxy(Identify,identifyFuncs[i]);}
   amplitude.Identify = Identify;
-  var Revenue = function() {this._q = []; return this;};
-  var revenueFuncs = ['setProductId', 'setQuantity', 'setPrice', 'setRevenueType', 'setEventProperties'];
-  for (var j = 0; j < revenueFuncs.length; j++) {proxy(Revenue, revenueFuncs[j]);}
-  amplitude.Revenue = Revenue;
-  var funcs = ['init', 'logEvent', 'logRevenue', 'setUserId', 'setUserProperties',
-               'setOptOut', 'setVersionName', 'setDomain', 'setDeviceId', 'enableTracking',
+  var funcs = ['init', 'logEvent', 'setUserId', 'setUserProperties',
+               'setOptOut', 'setVersionName', 'setDeviceId', 'enableTracking',
                'setGlobalUserProperties', 'identify', 'clearUserProperties',
-               'setGroup', 'logRevenueV2', 'regenerateDeviceId', 'groupIdentify', 'onInit',
+               'setGroup', 'regenerateDeviceId', 'groupIdentify', 'onInit',
                'logEventWithTimestamp', 'logEventWithGroups', 'setSessionId', 'resetSessionId'];
   function setUpProxy(instance) {
     function proxyMain(fn) {

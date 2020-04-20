@@ -1,27 +1,14 @@
 import Constants from './constants';
 import cookieStorage from './cookiestorage';
-import getUtmData from './utm';
 import Identify from './identify';
-import localStorage from './localstorage';  // jshint ignore:line
 import md5 from 'blueimp-md5';
 import Request from './xhr';
-import Revenue from './revenue';
 import type from './type';
 import UAParser from '@amplitude/ua-parser-js';
 import utils from './utils';
 import UUID from './uuid';
 import { version } from '../package.json';
 import DEFAULT_OPTIONS from './options';
-
-let AsyncStorage;
-let Platform;
-let DeviceInfo;
-if (BUILD_COMPAT_REACT_NATIVE) {
-  const reactNative = require('react-native');
-  AsyncStorage = require('@react-native-community/async-storage').default;
-  Platform = reactNative.Platform;
-  DeviceInfo = require('react-native-device-info');
-}
 
 /**
  * AmplitudeClient SDK API - instance constructor.
@@ -56,7 +43,6 @@ var AmplitudeClient = function AmplitudeClient(instanceName) {
 };
 
 AmplitudeClient.prototype.Identify = Identify;
-AmplitudeClient.prototype.Revenue = Revenue;
 
 /**
  * Initializes the Amplitude Javascript SDK with your apiKey and any optional configurations.
@@ -96,17 +82,10 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
 
     this.cookieStorage.options({
       expirationDays: this.options.cookieExpiration,
-      domain: this.options.domain,
       secure: this.options.secureCookie,
       path: this.options.path,
     });
-    this.options.domain = this.cookieStorage.options().domain;
 
-    if (!BUILD_COMPAT_REACT_NATIVE) {
-      if (this._instanceName === Constants.DEFAULT_INSTANCE) {
-        _upgradeCookieData(this);
-      }
-    }
     _loadCookieData(this);
     this._pendingReadStorage = true;
 
@@ -114,7 +93,6 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
       // load deviceId and userId from input, or try to fetch existing value from cookie
       this.options.deviceId = (type(opt_config) === 'object' && type(opt_config.deviceId) === 'string' &&
           !utils.isEmptyString(opt_config.deviceId) && opt_config.deviceId) ||
-          (this.options.deviceIdFromUrlParam && this._getDeviceIdFromUrlParam(this._getUrlParams())) ||
           this.options.deviceId || deviceId || UUID() + 'R';
       this.options.userId =
         (type(opt_userId) === 'string' && !utils.isEmptyString(opt_userId) && opt_userId) ||
@@ -123,39 +101,8 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
 
       var now = new Date().getTime();
       if (!this._sessionId || !this._lastEventTime || now - this._lastEventTime > this.options.sessionTimeout) {
-        if (this.options.unsetParamsReferrerOnNewSession) {
-          this._unsetUTMParams();
-        }
         this._newSession = true;
         this._sessionId = now;
-
-        // only capture UTM params and referrer if new session
-        if (this.options.saveParamsReferrerOncePerSession) {
-          this._trackParamsAndReferrer();
-        }
-      }
-
-      if (!this.options.saveParamsReferrerOncePerSession) {
-        this._trackParamsAndReferrer();
-      }
-
-      // load unsent events and identifies before any attempt to log new ones
-      if (this.options.saveEvents) {
-        // validate event properties for unsent events
-        for (let i = 0; i < this._unsentEvents.length; i++) {
-          var eventProperties = this._unsentEvents[i].event_properties;
-          var groups = this._unsentEvents[i].groups;
-          this._unsentEvents[i].event_properties = utils.validateProperties(eventProperties);
-          this._unsentEvents[i].groups = utils.validateGroups(groups);
-        }
-
-        // validate user properties for unsent identifys
-        for (let j = 0; j < this._unsentIdentifys.length; j++) {
-          var userProperties = this._unsentIdentifys[j].user_properties;
-          var identifyGroups = this._unsentIdentifys[j].groups;
-          this._unsentIdentifys[j].user_properties = utils.validateProperties(userProperties);
-          this._unsentIdentifys[j].groups = utils.validateGroups(identifyGroups);
-        }
       }
 
       this._lastEventTime = now;
@@ -172,120 +119,14 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
       this._isInitialized = true;
     };
 
-    if (AsyncStorage) {
-      this._migrateUnsentEvents(() => {
-        Promise.all([
-            AsyncStorage.getItem(this._storageSuffix),
-            AsyncStorage.getItem(this.options.unsentKey + this._storageSuffix),
-            AsyncStorage.getItem(this.options.unsentIdentifyKey + this._storageSuffix),
-        ]).then((values) => {
-          if (values[0]) {
-            const cookieData = JSON.parse(values[0]);
-            if (cookieData) {
-              _loadCookieDataProps(this, cookieData);
-            }
-          }
-          if (this.options.saveEvents) {
-            this._unsentEvents = this._parseSavedUnsentEventsString(values[1]).concat(this._unsentEvents);
-            this._unsentIdentifys = this._parseSavedUnsentEventsString(values[2]).concat(this._unsentIdentifys);
-          }
-          if (DeviceInfo) {
-            Promise.all([
-              DeviceInfo.getCarrier(),
-              DeviceInfo.getModel(),
-              DeviceInfo.getManufacturer(),
-              DeviceInfo.getUniqueId(),
-            ]).then(values => {
-              this.deviceInfo = {
-                carrier: values[0],
-                model: values[1],
-                manufacturer: values[2]
-              };
-              initFromStorage(values[3]);
-              this.runQueuedFunctions();
-              if (type(opt_callback) === 'function') {
-                opt_callback(this);
-              }
-            }).catch((err) => {
-              this.options.onError(err);
-            });
-          } else {
-            initFromStorage();
-            this.runQueuedFunctions();
-          }
-        }).catch((err) => {
-          this.options.onError(err);
-        });
-      });
-    } else {
-      if (this.options.saveEvents) {
-        this._unsentEvents = this._loadSavedUnsentEvents(this.options.unsentKey).concat(this._unsentEvents);
-        this._unsentIdentifys = this._loadSavedUnsentEvents(this.options.unsentIdentifyKey).concat(this._unsentIdentifys);
-      }
-      initFromStorage();
-      this.runQueuedFunctions();
-      if (type(opt_callback) === 'function') {
-        opt_callback(this);
-      }
+    initFromStorage();
+    this.runQueuedFunctions();
+    if (type(opt_callback) === 'function') {
+      opt_callback(this);
     }
   } catch (err) {
     utils.log.error(err);
     this.options.onError(err);
-  }
-};
-
-/**
- * @private
- */
-AmplitudeClient.prototype._migrateUnsentEvents = function _migrateUnsentEvents(cb) {
-  Promise.all([
-      AsyncStorage.getItem(this.options.unsentKey),
-      AsyncStorage.getItem(this.options.unsentIdentifyKey),
-  ]).then((values) => {
-    if (this.options.saveEvents) {
-      var unsentEventsString = values[0];
-      var unsentIdentifyKey = values[1];
-
-      var itemsToSet = [];
-      var itemsToRemove = [];
-
-      if (!!unsentEventsString) {
-        itemsToSet.push(AsyncStorage.setItem(this.options.unsentKey + this._storageSuffix, JSON.stringify(unsentEventsString)));
-        itemsToRemove.push(AsyncStorage.removeItem(this.options.unsentKey));
-      }
-
-      if (!!unsentIdentifyKey) {
-        itemsToSet.push(AsyncStorage.setItem(this.options.unsentIdentifyKey + this._storageSuffix, JSON.stringify(unsentIdentifyKey)));
-        itemsToRemove.push(AsyncStorage.removeItem(this.options.unsentIdentifyKey));
-      }
-
-      if (itemsToSet.length > 0) {
-        Promise.all(itemsToSet).then(() => {
-          Promise.all(itemsToRemove);
-        }).catch((err) => {
-          this.options.onError(err);
-        });
-      }
-    }
-  })
-  .then(cb)
-  .catch((err) => {
-    this.options.onError(err);
-  });
-};
-
-/**
- * @private
- */
-AmplitudeClient.prototype._trackParamsAndReferrer = function _trackParamsAndReferrer() {
-  if (this.options.includeUtm) {
-    this._initUtmData();
-  }
-  if (this.options.includeReferrer) {
-    this._saveReferrer(this._getReferrer());
-  }
-  if (this.options.includeGclid) {
-    this._saveGclid(this._getUrlParams());
   }
 };
 
@@ -353,40 +194,6 @@ AmplitudeClient.prototype._apiKeySet = function _apiKeySet(methodName) {
     return false;
   }
   return true;
-};
-
-/**
- * Load saved events from localStorage. JSON deserializes event array. Handles case where string is corrupted.
- * @private
- */
-AmplitudeClient.prototype._loadSavedUnsentEvents = function _loadSavedUnsentEvents(unsentKey) {
-  var savedUnsentEventsString = this._getFromStorage(localStorage, unsentKey);
-  var unsentEvents = this._parseSavedUnsentEventsString(savedUnsentEventsString, unsentKey);
-
-  this._setInStorage(localStorage, unsentKey, JSON.stringify(unsentEvents));
-
-  return unsentEvents;
-};
-
-/**
- * Load saved events from localStorage. JSON deserializes event array. Handles case where string is corrupted.
- * @private
- */
-AmplitudeClient.prototype._parseSavedUnsentEventsString = function _parseSavedUnsentEventsString(savedUnsentEventsString, unsentKey) {
-  if (utils.isEmptyString(savedUnsentEventsString)) {
-    return []; // new app, does not have any saved events
-  }
-
-  if (type(savedUnsentEventsString) === 'string') {
-    try {
-      var events = JSON.parse(savedUnsentEventsString);
-      if (type(events) === 'array') { // handle case where JSON dumping of unsent events is corrupted
-        return events;
-      }
-    } catch (e) {}
-  }
-  utils.log.error('Unable to load ' + unsentKey + ' events. Restart with a new empty queue.');
-  return [];
 };
 
 /**
@@ -506,60 +313,6 @@ AmplitudeClient.prototype._setInStorage = function _setInStorage(storage, key, v
   storage.setItem(key + this._storageSuffix, value);
 };
 
-var _upgradeCookieData = function _upgradeCookieData(scope) {
-  // skip if already migrated to 4.10+
-  var cookieData = scope.cookieStorage.get(scope.options.cookieName + scope._storageSuffix);
-  if (type(cookieData) === 'object') {
-    return;
-  }
-  // skip if already migrated to 2.70+
-  cookieData = scope.cookieStorage.get(scope.options.cookieName + scope._legacyStorageSuffix);
-  if (type(cookieData) === 'object' && cookieData.deviceId && cookieData.sessionId && cookieData.lastEventTime) {
-    return;
-  }
-
-  var _getAndRemoveFromLocalStorage = function _getAndRemoveFromLocalStorage(key) {
-    var value = localStorage.getItem(key);
-    localStorage.removeItem(key);
-    return value;
-  };
-
-  // in v2.6.0, deviceId, userId, optOut was migrated to localStorage with keys + first 6 char of apiKey
-  var apiKeySuffix = (type(scope.options.apiKey) === 'string' && ('_' + scope.options.apiKey.slice(0, 6))) || '';
-  var localStorageDeviceId = _getAndRemoveFromLocalStorage(Constants.DEVICE_ID + apiKeySuffix);
-  var localStorageUserId = _getAndRemoveFromLocalStorage(Constants.USER_ID + apiKeySuffix);
-  var localStorageOptOut = _getAndRemoveFromLocalStorage(Constants.OPT_OUT + apiKeySuffix);
-  if (localStorageOptOut !== null && localStorageOptOut !== undefined) {
-    localStorageOptOut = String(localStorageOptOut) === 'true'; // convert to boolean
-  }
-
-  // pre-v2.7.0 event and session meta-data was stored in localStorage. move to cookie for sub-domain support
-  var localStorageSessionId = parseInt(_getAndRemoveFromLocalStorage(Constants.SESSION_ID));
-  var localStorageLastEventTime = parseInt(_getAndRemoveFromLocalStorage(Constants.LAST_EVENT_TIME));
-  var localStorageEventId = parseInt(_getAndRemoveFromLocalStorage(Constants.LAST_EVENT_ID));
-  var localStorageIdentifyId = parseInt(_getAndRemoveFromLocalStorage(Constants.LAST_IDENTIFY_ID));
-  var localStorageSequenceNumber = parseInt(_getAndRemoveFromLocalStorage(Constants.LAST_SEQUENCE_NUMBER));
-
-  var _getFromCookie = function _getFromCookie(key) {
-    return type(cookieData) === 'object' && cookieData[key];
-  };
-  scope.options.deviceId = _getFromCookie('deviceId') || localStorageDeviceId;
-  scope.options.userId = _getFromCookie('userId') || localStorageUserId;
-  scope._sessionId = _getFromCookie('sessionId') || localStorageSessionId || scope._sessionId;
-  scope._lastEventTime = _getFromCookie('lastEventTime') || localStorageLastEventTime || scope._lastEventTime;
-  scope._eventId = _getFromCookie('eventId') || localStorageEventId || scope._eventId;
-  scope._identifyId = _getFromCookie('identifyId') || localStorageIdentifyId || scope._identifyId;
-  scope._sequenceNumber = _getFromCookie('sequenceNumber') || localStorageSequenceNumber || scope._sequenceNumber;
-
-  // optOut is a little trickier since it is a boolean
-  scope.options.optOut = localStorageOptOut || false;
-  if (cookieData && cookieData.optOut !== undefined && cookieData.optOut !== null) {
-    scope.options.optOut = String(cookieData.optOut) === 'true';
-  }
-
-  _saveCookieData(scope);
-};
-
 /**
  * Fetches deviceId, userId, event meta data from amplitude cookie
  * @private
@@ -623,177 +376,7 @@ var _saveCookieData = function _saveCookieData(scope) {
     identifyId: scope._identifyId,
     sequenceNumber: scope._sequenceNumber
   };
-  if (AsyncStorage) {
-    AsyncStorage.setItem(scope._storageSuffix, JSON.stringify(cookieData));
-  }
   scope.cookieStorage.set(scope.options.cookieName + scope._storageSuffix, cookieData);
-};
-
-/**
- * Parse the utm properties out of cookies and query for adding to user properties.
- * @private
- */
-AmplitudeClient.prototype._initUtmData = function _initUtmData(queryParams, cookieParams) {
-  queryParams = queryParams || this._getUrlParams();
-  cookieParams = cookieParams || this.cookieStorage.get('__utmz');
-  var utmProperties = getUtmData(cookieParams, queryParams);
-  _sendParamsReferrerUserProperties(this, utmProperties);
-};
-
-/**
- * Unset the utm params from the Amplitude instance and update the identify.
- * @private
- */
-AmplitudeClient.prototype._unsetUTMParams = function _unsetUTMParams() {
-  var identify = new Identify();
-  identify.unset(Constants.REFERRER);
-  identify.unset(Constants.UTM_SOURCE);
-  identify.unset(Constants.UTM_MEDIUM);
-  identify.unset(Constants.UTM_CAMPAIGN);
-  identify.unset(Constants.UTM_TERM);
-  identify.unset(Constants.UTM_CONTENT);
-  this.identify(identify);
-};
-
-/**
- * The calling function should determine when it is appropriate to send these user properties. This function
- * will no longer contain any session storage checking logic.
- * @private
- */
-var _sendParamsReferrerUserProperties = function _sendParamsReferrerUserProperties(scope, userProperties) {
-  if (type(userProperties) !== 'object' || Object.keys(userProperties).length === 0) {
-    return;
-  }
-
-  // setOnce the initial user properties
-  var identify = new Identify();
-  for (var key in userProperties) {
-    if (userProperties.hasOwnProperty(key)) {
-      identify.setOnce('initial_' + key, userProperties[key]);
-      identify.set(key, userProperties[key]);
-    }
-  }
-
-  scope.identify(identify);
-};
-
-/**
- * @private
- */
-AmplitudeClient.prototype._getReferrer = function _getReferrer() {
-  return document.referrer;
-};
-
-/**
- * @private
- */
-AmplitudeClient.prototype._getUrlParams = function _getUrlParams() {
-  return location.search;
-};
-
-/**
- * Try to fetch Google Gclid from url params.
- * @private
- */
-AmplitudeClient.prototype._saveGclid = function _saveGclid(urlParams) {
-  var gclid = utils.getQueryParam('gclid', urlParams);
-  if (utils.isEmptyString(gclid)) {
-    return;
-  }
-  var gclidProperties = {'gclid': gclid};
-  _sendParamsReferrerUserProperties(this, gclidProperties);
-};
-
-/**
- * Try to fetch Amplitude device id from url params.
- * @private
- */
-AmplitudeClient.prototype._getDeviceIdFromUrlParam = function _getDeviceIdFromUrlParam(urlParams) {
-  return utils.getQueryParam(Constants.AMP_DEVICE_ID_PARAM, urlParams);
-};
-
-/**
- * Parse the domain from referrer info
- * @private
- */
-AmplitudeClient.prototype._getReferringDomain = function _getReferringDomain(referrer) {
-  if (utils.isEmptyString(referrer)) {
-    return null;
-  }
-  var parts = referrer.split('/');
-  if (parts.length >= 3) {
-    return parts[2];
-  }
-  return null;
-};
-
-/**
- * Fetch the referrer information, parse the domain and send.
- * Since user properties are propagated on the server, only send once per session, don't need to send with every event
- * @private
- */
-AmplitudeClient.prototype._saveReferrer = function _saveReferrer(referrer) {
-  if (utils.isEmptyString(referrer)) {
-    return;
-  }
-  var referrerInfo = {
-    'referrer': referrer,
-    'referring_domain': this._getReferringDomain(referrer)
-  };
-  _sendParamsReferrerUserProperties(this, referrerInfo);
-};
-
-/**
- * Saves unsent events and identifies to localStorage. JSON stringifies event queues before saving.
- * Note: this is called automatically every time events are logged, unless you explicitly set option saveEvents to false.
- * @private
- */
-AmplitudeClient.prototype.saveEvents = function saveEvents() {
-  try {
-    if (AsyncStorage) {
-      AsyncStorage.setItem(this.options.unsentKey + this._storageSuffix, JSON.stringify(this._unsentEvents));
-    } else {
-      this._setInStorage(localStorage, this.options.unsentKey, JSON.stringify(this._unsentEvents));
-    }
-  } catch (e) {}
-
-  try {
-    if (AsyncStorage) {
-      AsyncStorage.setItem(this.options.unsentIdentifyKey + this._storageSuffix, JSON.stringify(this._unsentIdentifys));
-    } else {
-      this._setInStorage(localStorage, this.options.unsentIdentifyKey, JSON.stringify(this._unsentIdentifys));
-    }
-  } catch (e) {}
-};
-
-/**
- * Sets a customer domain for the amplitude cookie. Useful if you want to support cross-subdomain tracking.
- * @public
- * @param {string} domain to set.
- * @example amplitudeClient.setDomain('.amplitude.com');
- */
-AmplitudeClient.prototype.setDomain = function setDomain(domain) {
-  if (this._shouldDeferCall()) {
-    return this._q.push(['setDomain'].concat(Array.prototype.slice.call(arguments, 0)));
-  }
-
-  if (!utils.validateInput(domain, 'domain', 'string')) {
-    return;
-  }
-
-  try {
-    this.cookieStorage.options({
-      expirationDays: this.options.cookieExpiration,
-      secure: this.options.secureCookie,
-      domain: domain,
-      path: this.options.path,
-    });
-    this.options.domain = this.cookieStorage.options().domain;
-    _loadCookieData(this);
-    _saveCookieData(this);
-  } catch (e) {
-    utils.log.error(e);
-  }
 };
 
 /**
@@ -1109,9 +692,7 @@ AmplitudeClient.prototype.setVersionName = function setVersionName(versionName) 
  * @private
  */
 AmplitudeClient.prototype._logEvent = function _logEvent(eventType, eventProperties, apiProperties, userProperties, groups, groupProperties, timestamp, callback) {
-  if (!BUILD_COMPAT_REACT_NATIVE) {
-    _loadCookieData(this); // reload cookie before each log event to sync event meta-data between windows and tabs
-  }
+  _loadCookieData(this);
   if (!eventType) {
     if (type(callback) === 'function') {
       callback(0, 'No request sent', {reason: 'Missing eventType'});
@@ -1145,15 +726,6 @@ AmplitudeClient.prototype._logEvent = function _logEvent(eventType, eventPropert
     let deviceModel = this._ua.os.name;
     let deviceManufacturer;
     let carrier;
-    if (BUILD_COMPAT_REACT_NATIVE) {
-      osName = Platform.OS;
-      osVersion = Platform.Version;
-      if (this.deviceInfo) {
-        carrier = this.deviceInfo.carrier;
-        deviceManufacturer = this.deviceInfo.manufacturer;
-        deviceModel = this.deviceInfo.model;
-      }
-    }
 
     userProperties = userProperties || {};
     var trackingOptions = {...this._apiPropertiesTrackingOptions};
@@ -1196,10 +768,6 @@ AmplitudeClient.prototype._logEvent = function _logEvent(eventType, eventPropert
     } else {
       this._unsentEvents.push(event);
       this._limitEventsQueued(this._unsentEvents);
-    }
-
-    if (this.options.saveEvents) {
-      this.saveEvents();
     }
 
     if (!this._sendEventsIfReady(callback) && type(callback) === 'function') {
@@ -1331,78 +899,6 @@ AmplitudeClient.prototype.logEventWithGroups = function(eventType, eventProperti
   }
   return this._logEvent(eventType, eventProperties, null, null, groups, null, null, opt_callback);
 };
-
-/**
- * Test that n is a number or a numeric value.
- * @private
- */
-var _isNumber = function _isNumber(n) {
-  return !isNaN(parseFloat(n)) && isFinite(n);
-};
-
-/**
- * Log revenue with Revenue interface. The new revenue interface allows for more revenue fields like
- * revenueType and event properties.
- * See [Readme]{@link https://github.com/amplitude/Amplitude-Javascript#tracking-revenue}
- * for more information on the Revenue interface and logging revenue.
- * @public
- * @param {Revenue} revenue_obj - the revenue object containing the revenue data being logged.
- * @example var revenue = new amplitude.Revenue().setProductId('productIdentifier').setPrice(10.99);
- * amplitude.logRevenueV2(revenue);
- */
-AmplitudeClient.prototype.logRevenueV2 = function logRevenueV2(revenue_obj) {
-  if (this._shouldDeferCall()) {
-    return this._q.push(['logRevenueV2'].concat(Array.prototype.slice.call(arguments, 0)));
-  }
-
-  if (!this._apiKeySet('logRevenueV2()')) {
-    return;
-  }
-
-  // if revenue input is a proxied object created by the async loading snippet, convert it into an revenue object
-  if (type(revenue_obj) === 'object' && revenue_obj.hasOwnProperty('_q')) {
-    revenue_obj = _convertProxyObjectToRealObject(new Revenue(), revenue_obj);
-  }
-
-  if (revenue_obj instanceof Revenue) {
-    // only send if revenue is valid
-    if (revenue_obj && revenue_obj._isValidRevenue()) {
-      return this.logEvent(Constants.REVENUE_EVENT, revenue_obj._toJSONObject());
-    }
-  } else {
-    utils.log.error('Invalid revenue input type. Expected Revenue object but saw ' + type(revenue_obj));
-  }
-};
-
-if (BUILD_COMPAT_2_0) {
-  /**
-   * Log revenue event with a price, quantity, and product identifier. DEPRECATED - use logRevenueV2
-   * @public
-   * @deprecated
-   * @param {number} price - price of revenue event
-   * @param {number} quantity - (optional) quantity of products in revenue event. If no quantity specified default to 1.
-   * @param {string} product - (optional) product identifier
-   * @example amplitudeClient.logRevenue(3.99, 1, 'product_1234');
-   */
-  AmplitudeClient.prototype.logRevenue = function logRevenue(price, quantity, product) {
-    if (this._shouldDeferCall()) {
-      return this._q.push(['logRevenue'].concat(Array.prototype.slice.call(arguments, 0)));
-    }
-
-    // Test that the parameters are of the right type.
-    if (!this._apiKeySet('logRevenue()') || !_isNumber(price) || (quantity !== undefined && !_isNumber(quantity))) {
-      // utils.log('Price and quantity arguments to logRevenue must be numbers');
-      return -1;
-    }
-
-    return this._logEvent(Constants.REVENUE_EVENT, {}, {
-      productId: product,
-      special: 'revenue_amount',
-      quantity: quantity || 1,
-      price: price
-    }, null, null, null, null, null);
-  };
-}
 
 /**
  * Remove events in storage with event ids up to and including maxEventId.

@@ -1,7 +1,6 @@
 import AmplitudeClient from './amplitude-client';
 import Constants from './constants';
 import Identify from './identify';
-import Revenue from './revenue';
 import type from './type';
 import utils from './utils';
 import { version } from '../package.json';
@@ -22,7 +21,6 @@ var Amplitude = function Amplitude() {
 };
 
 Amplitude.prototype.Identify = Identify;
-Amplitude.prototype.Revenue = Revenue;
 
 Amplitude.prototype.getInstance = function getInstance(instance) {
   instance = utils.isEmptyString(instance) ? Constants.DEFAULT_INSTANCE : instance.toLowerCase();
@@ -123,26 +121,6 @@ if (BUILD_COMPAT_2_0) {
    */
   Amplitude.prototype.nextSequenceNumber = function nextSequenceNumber() {
     return this.getInstance().nextSequenceNumber();
-  };
-
-  /**
-   * Saves unsent events and identifies to localStorage. JSON stringifies event queues before saving.
-   * Note: this is called automatically every time events are logged, unless you explicitly set option saveEvents to false.
-   * @private
-   */
-  Amplitude.prototype.saveEvents = function saveEvents() {
-    this.getInstance().saveEvents();
-  };
-
-  /**
-   * Sets a customer domain for the amplitude cookie. Useful if you want to support cross-subdomain tracking.
-   * @public
-   * @param {string} domain to set.
-   * @deprecated Please use amplitude.getInstance().setDomain(domain);
-   * @example amplitude.setDomain('.amplitude.com');
-   */
-  Amplitude.prototype.setDomain = function setDomain(domain) {
-    this.getInstance().setDomain(domain);
   };
 
   /**
@@ -300,34 +278,6 @@ if (BUILD_COMPAT_2_0) {
    */
   Amplitude.prototype.logEventWithGroups = function(eventType, eventProperties, groups, opt_callback) {
     return this.getInstance().logEventWithGroups(eventType, eventProperties, groups, opt_callback);
-  };
-
-  /**
-   * Log revenue with Revenue interface. The new revenue interface allows for more revenue fields like
-   * revenueType and event properties.
-   * See [Readme]{@link https://github.com/amplitude/Amplitude-Javascript#tracking-revenue}
-   * for more information on the Revenue interface and logging revenue.
-   * @public
-   * @param {Revenue} revenue_obj - the revenue object containing the revenue data being logged.
-   * @deprecated Please use amplitude.getInstance().logRevenueV2(revenue_obj);
-   * @example var revenue = new amplitude.Revenue().setProductId('productIdentifier').setPrice(10.99);
-   * amplitude.logRevenueV2(revenue);
-   */
-  Amplitude.prototype.logRevenueV2 = function logRevenueV2(revenue_obj) {
-    return this.getInstance().logRevenueV2(revenue_obj);
-  };
-
-  /**
-   * Log revenue event with a price, quantity, and product identifier. DEPRECATED - use logRevenueV2
-   * @public
-   * @param {number} price - price of revenue event
-   * @param {number} quantity - (optional) quantity of products in revenue event. If no quantity specified default to 1.
-   * @param {string} product - (optional) product identifier
-   * @deprecated Please use amplitude.getInstance().logRevenueV2(revenue_obj);
-   * @example amplitude.logRevenue(3.99, 1, 'product_1234');
-   */
-  Amplitude.prototype.logRevenue = function logRevenue(price, quantity, product) {
-    return this.getInstance().logRevenue(price, quantity, product);
   };
 
   /**

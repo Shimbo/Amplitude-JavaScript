@@ -33,9 +33,6 @@ const set = (name, value, opts) => {
     str += '; expires=' + expires.toUTCString();
   }
   str += '; path=' + opts.path;
-  if (opts.domain) {
-    str += '; domain=' + opts.domain;
-  }
   if (opts.secure) {
     str += '; Secure';
   }

@@ -5,27 +5,10 @@
  * Uses cookie if available, otherwise fallback to localstorage.
  */
 
-import Constants from './constants';
 import Cookie from './cookie';
-import localStorage from './localstorage'; // jshint ignore:line
 
 var cookieStorage = function() {
   this.storage = null;
-};
-
-// test that cookies are enabled - navigator.cookiesEnabled yields false positives in IE, need to test directly
-cookieStorage.prototype._cookiesEnabled = function() {
-  var uid = String(new Date());
-  var result;
-  try {
-    Cookie.set(Constants.COOKIE_TEST, uid);
-    result = Cookie.get(Constants.COOKIE_TEST) === uid;
-    Cookie.remove(Constants.COOKIE_TEST);
-    return result;
-  } catch (e) {
-    // cookies are not enabled
-  }
-  return false;
 };
 
 cookieStorage.prototype.getStorage = function() {
@@ -33,67 +16,8 @@ cookieStorage.prototype.getStorage = function() {
     return this.storage;
   }
 
-  if (this._cookiesEnabled()) {
-    this.storage = Cookie;
-  } else {
-    // if cookies disabled, fallback to localstorage
-    // note: localstorage does not persist across subdomains
-    var keyPrefix = 'amp_cookiestore_';
-    this.storage = {
-      _prefix: keyPrefix,
-      _options: {
-        expirationDays: undefined,
-        domain: undefined,
-        secure: false,
-        path: '/',
-      },
-      reset: function() {
-        this._options = {
-          expirationDays: undefined,
-          domain: undefined,
-          secure: false,
-          path: '/',
-        };
-      },
-      options: function(opts) {
-        if (arguments.length === 0) {
-          return this._options;
-        }
-        opts = opts || {};
-        this._options.expirationDays = opts.expirationDays || this._options.expirationDays;
-        // localStorage is specific to subdomains
-        this._options.domain = opts.domain || this._options.domain || (window && window.location && window.location.hostname);
-        this._options.path = opts.path || this._options.path || '/';
-        if (this._options.path) {
-          var pathInPrefix = this._options.path === '/' ? '' : ('_' + this._options.path.replace(/\//gi, '') + '_');
-          this._prefix = keyPrefix + pathInPrefix;
-        }
-        return this._options.secure = opts.secure || false;
-      },
-      get: function(name) {
-        try {
-          return JSON.parse(localStorage.getItem(this._prefix + name));
-        } catch (e) {
-        }
-        return null;
-      },
-      set: function(name, value) {
-        try {
-          localStorage.setItem(this._prefix + name, JSON.stringify(value));
-          return true;
-        } catch (e) {
-        }
-        return false;
-      },
-      remove: function(name) {
-        try {
-          localStorage.removeItem(this._prefix + name);
-        } catch (e) {
-          return false;
-        }
-      }
-    };
-  }
+  // Whatever cookies enabled or not use cookie storage as default
+  this.storage = Cookie;
 
   return this.storage;
 };

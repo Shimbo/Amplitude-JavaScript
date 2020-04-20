@@ -20,21 +20,5 @@ export default {
 
   COOKIE_TEST: 'amplitude_cookie_test',
 
-  // revenue keys
-  REVENUE_EVENT: 'revenue_amount',
-  REVENUE_PRODUCT_ID: '$productId',
-  REVENUE_QUANTITY: '$quantity',
-  REVENUE_PRICE: '$price',
-  REVENUE_REVENUE_TYPE: '$revenueType',
-
   AMP_DEVICE_ID_PARAM: 'amp_device_id',  // url param
-
-  REFERRER: 'referrer',
-
-  // UTM Params
-  UTM_SOURCE: 'utm_source',
-  UTM_MEDIUM: 'utm_medium',
-  UTM_CAMPAIGN: 'utm_campaign',
-  UTM_TERM: 'utm_term',
-  UTM_CONTENT: 'utm_content'
 };

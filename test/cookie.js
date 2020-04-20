@@ -1,6 +1,4 @@
 import cookie from '../src/cookie.js';
-import baseCookie from '../src/base-cookie';
-import getLocation from '../src/get-location';
 
 describe('Cookie', function() {
 
@@ -38,7 +36,6 @@ describe('Cookie', function() {
     it('should set default options', function() {
       assert.deepEqual(cookie.options(), {
         expirationDays: undefined,
-        domain: undefined,
         path: '/',
       });
     });

@@ -1,13 +1,7 @@
 import Amplitude from '../src/amplitude.js';
-import getUtmData from '../src/utm.js';
-import localStorage from '../src/localstorage.js';
-import CookieStorage from '../src/cookiestorage.js';
-import Base64 from '../src/base64.js';
 import cookie from '../src/cookie.js';
-import utils from '../src/utils.js';
 import queryString from 'query-string';
 import Identify from '../src/identify.js';
-import Revenue from '../src/revenue.js';
 
 // maintain for testing backwards compatability
 describe('Amplitude', function() {
@@ -31,7 +25,6 @@ describe('Amplitude', function() {
   });
 
   function reset() {
-    localStorage.clear();
     sessionStorage.clear();
     cookie.remove(amplitude.options.cookieName);
     cookie.remove(amplitude.options.cookieName + keySuffix);
@@ -132,23 +125,6 @@ describe('Amplitude', function() {
       assert.equal(app2._eventId, 1);
       assert.equal(app2._identifyId, 0);
       assert.equal(app2._sequenceNumber, 1);
-
-      // verify separate localstorages
-      assert.deepEqual(
-        JSON.parse(localStorage.getItem('amplitude_unsent_' + apiKey))[0].event_type, 'amplitude event'
-      );
-      assert.deepEqual(
-        JSON.parse(localStorage.getItem('amplitude_unsent_' + apiKey))[1].event_type, 'amplitude event2'
-      );
-      assert.equal(localStorage.getItem('amplitude_unsent_identify_' + apiKey), JSON.stringify([]));
-      assert.equal(localStorage.getItem('amplitude_unsent_1_app1'), JSON.stringify([]));
-      assert.deepEqual(
-        JSON.parse(localStorage.getItem('amplitude_unsent_identify_1_app1'))[0].user_properties, {'$set':{'key':'value'}}
-      );
-      assert.equal(
-        JSON.parse(localStorage.getItem('amplitude_unsent_2_app2'))[0].event_type, 'app2 event'
-      );
-      assert.equal(localStorage.getItem('amplitude_unsent_identify_2_app2'), JSON.stringify([]));
 
       // verify separate apiKeys in server requests
       assert.lengthOf(server.requests, 3);
@@ -304,115 +280,6 @@ describe('Amplitude', function() {
       assert.equal(counter, 1);
     });
 
-    it ('should migrate deviceId, userId, optOut from localStorage to cookie', function() {
-      var deviceId = 'test_device_id';
-      var userId = 'test_user_id';
-
-      assert.isNull(cookie.get(amplitude.options.cookieName));
-      localStorage.setItem('amplitude_deviceId' + keySuffix, deviceId);
-      localStorage.setItem('amplitude_userId' + keySuffix, userId);
-      localStorage.setItem('amplitude_optOut' + keySuffix, true);
-
-      amplitude.init(apiKey);
-      assert.equal(amplitude.options.deviceId, deviceId);
-      assert.equal(amplitude.options.userId, userId);
-      assert.isTrue(amplitude.options.optOut);
-
-      var cookieData = cookie.get(amplitude.options.cookieName + '_' + apiKey);
-      assert.equal(cookieData.deviceId, deviceId);
-      assert.equal(cookieData.userId, userId);
-      assert.isTrue(cookieData.optOut);
-    });
-
-    it('should migrate session and event info from localStorage to cookie', function() {
-      var now = new Date().getTime();
-
-      assert.isNull(cookie.get(amplitude.options.cookieName));
-      localStorage.setItem('amplitude_sessionId', now);
-      localStorage.setItem('amplitude_lastEventTime', now);
-      localStorage.setItem('amplitude_lastEventId', 3000);
-      localStorage.setItem('amplitude_lastIdentifyId', 4000);
-      localStorage.setItem('amplitude_lastSequenceNumber', 5000);
-
-      amplitude.init(apiKey);
-
-      assert.equal(amplitude.getInstance()._sessionId, now);
-      assert.isTrue(amplitude.getInstance()._lastEventTime >= now);
-      assert.equal(amplitude.getInstance()._eventId, 3000);
-      assert.equal(amplitude.getInstance()._identifyId, 4000);
-      assert.equal(amplitude.getInstance()._sequenceNumber, 5000);
-
-      var cookieData = cookie.get(amplitude.options.cookieName + '_' + apiKey);
-      assert.equal(cookieData.sessionId, now);
-      assert.equal(cookieData.lastEventTime, amplitude.getInstance()._lastEventTime);
-      assert.equal(cookieData.eventId, 3000);
-      assert.equal(cookieData.identifyId, 4000);
-      assert.equal(cookieData.sequenceNumber, 5000);
-    });
-
-    it('should migrate cookie data from old cookie name and ignore local storage values', function(){
-      var now = new Date().getTime();
-
-      // deviceId and sequenceNumber not set, init should load value from localStorage
-      var cookieData = {
-        userId: 'test_user_id',
-        optOut: false,
-        sessionId: now,
-        lastEventTime: now,
-        eventId: 50,
-        identifyId: 60
-      }
-
-      cookie.set(amplitude.options.cookieName, cookieData);
-      localStorage.setItem('amplitude_deviceId' + keySuffix, 'old_device_id');
-      localStorage.setItem('amplitude_userId' + keySuffix, 'fake_user_id');
-      localStorage.setItem('amplitude_optOut' + keySuffix, true);
-      localStorage.setItem('amplitude_sessionId', now-1000);
-      localStorage.setItem('amplitude_lastEventTime', now-1000);
-      localStorage.setItem('amplitude_lastEventId', 20);
-      localStorage.setItem('amplitude_lastIdentifyId', 30);
-      localStorage.setItem('amplitude_lastSequenceNumber', 40);
-
-      amplitude.init(apiKey);
-      assert.equal(amplitude.options.deviceId, 'old_device_id');
-      assert.equal(amplitude.options.userId, 'test_user_id');
-      assert.isFalse(amplitude.options.optOut);
-      assert.equal(amplitude.getInstance()._sessionId, now);
-      assert.isTrue(amplitude.getInstance()._lastEventTime >= now);
-      assert.equal(amplitude.getInstance()._eventId, 50);
-      assert.equal(amplitude.getInstance()._identifyId, 60);
-      assert.equal(amplitude.getInstance()._sequenceNumber, 40);
-    });
-
-    it('should skip the migration if the new cookie already has deviceId, sessionId, lastEventTime', function() {
-      var now = new Date().getTime();
-
-      cookie.set(amplitude.options.cookieName + '_' + apiKey, {
-        deviceId: 'new_device_id',
-        sessionId: now,
-        lastEventTime: now
-      });
-
-      localStorage.setItem('amplitude_deviceId' + keySuffix, 'fake_device_id');
-      localStorage.setItem('amplitude_userId' + keySuffix, 'fake_user_id');
-      localStorage.setItem('amplitude_optOut' + keySuffix, true);
-      localStorage.setItem('amplitude_sessionId', now-1000);
-      localStorage.setItem('amplitude_lastEventTime', now-1000);
-      localStorage.setItem('amplitude_lastEventId', 20);
-      localStorage.setItem('amplitude_lastIdentifyId', 30);
-      localStorage.setItem('amplitude_lastSequenceNumber', 40);
-
-      amplitude.init(apiKey, 'new_user_id');
-      assert.equal(amplitude.options.deviceId, 'new_device_id');
-      assert.equal(amplitude.options.userId, 'new_user_id');
-      assert.isFalse(amplitude.options.optOut);
-      assert.isTrue(amplitude.getInstance()._sessionId >= now);
-      assert.isTrue(amplitude.getInstance()._lastEventTime >= now);
-      assert.equal(amplitude.getInstance()._eventId, 0);
-      assert.equal(amplitude.getInstance()._identifyId, 0);
-      assert.equal(amplitude.getInstance()._sequenceNumber, 0);
-    });
-
     it('should load sessionId, eventId from cookie and ignore the one in localStorage', function() {
       var sessionIdKey = 'amplitude_sessionId';
       var lastEventTimeKey = 'amplitude_lastEventTime';
@@ -454,211 +321,6 @@ describe('Amplitude', function() {
       assert.equal(amplitude2.getInstance()._eventId, 50);
       assert.equal(amplitude2.getInstance()._identifyId, 60);
       assert.equal(amplitude2.getInstance()._sequenceNumber, 70);
-    });
-
-    it('should load sessionId from localStorage if not in cookie', function() {
-      var sessionIdKey = 'amplitude_sessionId';
-      var lastEventTimeKey = 'amplitude_lastEventTime';
-      var eventIdKey = 'amplitude_lastEventId';
-      var identifyIdKey = 'amplitude_lastIdentifyId';
-      var sequenceNumberKey = 'amplitude_lastSequenceNumber';
-      var amplitude2 = new Amplitude();
-
-      var cookieData = {
-        deviceId: 'test_device_id',
-        userId: userId,
-        optOut: true
-      }
-      cookie.set(amplitude2.options.cookieName, cookieData);
-
-      var clock = sinon.useFakeTimers();
-      clock.tick(1000);
-      var sessionId = new Date().getTime();
-
-      localStorage.clear();
-      localStorage.setItem(sessionIdKey, sessionId);
-      localStorage.setItem(lastEventTimeKey, sessionId);
-      localStorage.setItem(eventIdKey, 50);
-      localStorage.setItem(identifyIdKey, 60);
-      localStorage.setItem(sequenceNumberKey, 70);
-
-      clock.tick(10);
-      amplitude2.init(apiKey, userId);
-      clock.restore();
-
-      assert.equal(amplitude2.getInstance()._sessionId, sessionId);
-      assert.equal(amplitude2.getInstance()._lastEventTime, sessionId + 10);
-      assert.equal(amplitude2.getInstance()._eventId, 50);
-      assert.equal(amplitude2.getInstance()._identifyId, 60);
-      assert.equal(amplitude2.getInstance()._sequenceNumber, 70);
-    });
-
-    it('should load saved events from localStorage', function() {
-      var existingEvent = '[{"device_id":"test_device_id","user_id":"test_user_id","timestamp":1453769146589,' +
-        '"event_id":49,"session_id":1453763315544,"event_type":"clicked","version_name":"Web","platform":"Web"' +
-        ',"os_name":"Chrome","os_version":"47","device_model":"Mac","language":"en-US","api_properties":{},' +
-        '"event_properties":{},"user_properties":{},"uuid":"3c508faa-a5c9-45fa-9da7-9f4f3b992fb0","library"' +
-        ':{"name":"amplitude-js","version":"2.9.0"},"sequence_number":130,"groups":{}}]';
-      var existingIdentify = '[{"device_id":"test_device_id","user_id":"test_user_id","timestamp":1453769338995,' +
-        '"event_id":82,"session_id":1453763315544,"event_type":"$identify","version_name":"Web","platform":"Web"' +
-        ',"os_name":"Chrome","os_version":"47","device_model":"Mac","language":"en-US","api_properties":{},' +
-        '"event_properties":{},"user_properties":{"$set":{"age":30,"city":"San Francisco, CA"}},"uuid":"' +
-        'c50e1be4-7976-436a-aa25-d9ee38951082","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number"' +
-        ':131,"groups":{}}]';
-      localStorage.setItem('amplitude_unsent_' + apiKey, existingEvent);
-      localStorage.setItem('amplitude_unsent_identify_' + apiKey, existingIdentify);
-
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey, null, {batchEvents: true});
-
-      // check event loaded into memory
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents, JSON.parse(existingEvent));
-      assert.deepEqual(amplitude2.getInstance()._unsentIdentifys, JSON.parse(existingIdentify));
-
-      // check local storage keys are still same for default instance
-      assert.equal(localStorage.getItem('amplitude_unsent_' + apiKey), existingEvent);
-      assert.equal(localStorage.getItem('amplitude_unsent_identify_' + apiKey), existingIdentify);
-    });
-
-    it('should validate event properties when loading saved events from localStorage', function() {
-      var existingEvents = '[{"device_id":"15a82aaa-0d9e-4083-a32d-2352191877e6","user_id":"15a82aaa-0d9e-4083-a32d' +
-        '-2352191877e6","timestamp":1455744744413,"event_id":2,"session_id":1455744733865,"event_type":"clicked",' +
-        '"version_name":"Web","platform":"Web","os_name":"Chrome","os_version":"48","device_model":"Mac","language"' +
-        ':"en-US","api_properties":{},"event_properties":"{}","user_properties":{},"uuid":"1b8859d9-e91e-403e-92d4-' +
-        'c600dfb83432","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number":4},{"device_id":"15a82a' +
-        'aa-0d9e-4083-a32d-2352191877e6","user_id":"15a82aaa-0d9e-4083-a32d-2352191877e6","timestamp":1455744746295,' +
-        '"event_id":3,"session_id":1455744733865,"event_type":"clicked","version_name":"Web","platform":"Web",' +
-        '"os_name":"Chrome","os_version":"48","device_model":"Mac","language":"en-US","api_properties":{},' +
-        '"event_properties":{"10":"false","bool":true,"null":null,"string":"test","array":' +
-        '[0,1,2,"3"],"nested_array":["a",{"key":"value"},["b"]],"object":{"key":"value"},"nested_object":' +
-        '{"k":"v","l":[0,1],"o":{"k2":"v2","l2":["e2",{"k3":"v3"}]}}},"user_properties":{},"uuid":"650407a1-d705-' +
-        '47a0-8918-b4530ce51f89","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number":5}]'
-      localStorage.setItem('amplitude_unsent_' + apiKey, existingEvents);
-
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey, null, {batchEvents: true});
-
-      var expected = {
-        '10': 'false',
-        'bool': true,
-        'string': 'test',
-        'array': [0, 1, 2, '3'],
-        'nested_array': ['a', {'key':'value'}],
-        'object': {'key':'value'},
-        'nested_object': {'k':'v', 'l':[0,1], 'o':{'k2':'v2', 'l2': ['e2', {'k3':'v3'}]}}
-      }
-
-      // check that event loaded into memory
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents[0].event_properties, {});
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents[1].event_properties, expected);
-    });
-
-    it('should validate user properties when loading saved identifys from localStorage', function() {
-      var existingEvents = '[{"device_id":"15a82a' +
-        'aa-0d9e-4083-a32d-2352191877e6","user_id":"15a82aaa-0d9e-4083-a32d-2352191877e6","timestamp":1455744746295,' +
-        '"event_id":3,"session_id":1455744733865,"event_type":"$identify","version_name":"Web","platform":"Web",' +
-        '"os_name":"Chrome","os_version":"48","device_model":"Mac","language":"en-US","api_properties":{},' +
-        '"user_properties":{"$set":{"10":"false","bool":true,"null":null,"string":"test","array":' +
-        '[0,1,2,"3"],"nested_array":["a",{"key":"value"},["b"]],"object":{"key":"value"},"nested_object":' +
-        '{"k":"v","l":[0,1],"o":{"k2":"v2","l2":["e2",{"k3":"v3"}]}}}},"event_properties":{},"uuid":"650407a1-d705-' +
-        '47a0-8918-b4530ce51f89","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number":5}]'
-      localStorage.setItem('amplitude_unsent_identify_' + apiKey, existingEvents);
-
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey, null, {batchEvents: true});
-
-      var expected = {
-        '10': 'false',
-        'bool': true,
-        'string': 'test',
-        'array': [0, 1, 2, '3'],
-        'nested_array': ['a', {'key':'value'}],
-        'object': {'key':'value'},
-        'nested_object': {'k':'v', 'l':[0,1], 'o':{'k2':'v2', 'l2': ['e2', {'k3':'v3'}]}}
-      }
-
-      // check that event loaded into memory
-      assert.deepEqual(amplitude2.getInstance()._unsentIdentifys[0].user_properties, {'$set': expected});
-    });
-
-    it ('should load saved events from localStorage new keys and send events', function() {
-      var existingEvent = '[{"device_id":"test_device_id","user_id":"test_user_id","timestamp":1453769146589,' +
-        '"event_id":49,"session_id":1453763315544,"event_type":"clicked","version_name":"Web","platform":"Web"' +
-        ',"os_name":"Chrome","os_version":"47","device_model":"Mac","language":"en-US","api_properties":{},' +
-        '"event_properties":{},"user_properties":{},"uuid":"3c508faa-a5c9-45fa-9da7-9f4f3b992fb0","library"' +
-        ':{"name":"amplitude-js","version":"2.9.0"},"sequence_number":130}]';
-      var existingIdentify = '[{"device_id":"test_device_id","user_id":"test_user_id","timestamp":1453769338995,' +
-        '"event_id":82,"session_id":1453763315544,"event_type":"$identify","version_name":"Web","platform":"Web"' +
-        ',"os_name":"Chrome","os_version":"47","device_model":"Mac","language":"en-US","api_properties":{},' +
-        '"event_properties":{},"user_properties":{"$set":{"age":30,"city":"San Francisco, CA"}},"uuid":"' +
-        'c50e1be4-7976-436a-aa25-d9ee38951082","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number"' +
-        ':131}]';
-      localStorage.setItem('amplitude_unsent_' + apiKey, existingEvent);
-      localStorage.setItem('amplitude_unsent_identify_' + apiKey, existingIdentify);
-
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 2});
-      server.respondWith('success');
-      server.respond();
-
-      // check event loaded into memory
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents, []);
-      assert.deepEqual(amplitude2.getInstance()._unsentIdentifys, []);
-
-      // check local storage keys are still same
-      assert.equal(localStorage.getItem('amplitude_unsent_' + apiKey), JSON.stringify([]));
-      assert.equal(localStorage.getItem('amplitude_unsent_identify_' + apiKey), JSON.stringify([]));
-
-      // check request
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 2);
-      assert.equal(events[0].event_id, 49);
-      assert.equal(events[1].event_type, '$identify');
-    });
-
-    it('should validate event properties when loading saved events from localStorage', function() {
-      var existingEvents = '[{"device_id":"15a82aaa-0d9e-4083-a32d-2352191877e6","user_id":"15a82aaa-0d9e-4083-a32d' +
-          '-2352191877e6","timestamp":1455744744413,"event_id":2,"session_id":1455744733865,"event_type":"clicked",' +
-          '"version_name":"Web","platform":"Web","os_name":"Chrome","os_version":"48","device_model":"Mac","language"' +
-          ':"en-US","api_properties":{},"event_properties":"{}","user_properties":{},"uuid":"1b8859d9-e91e-403e-92d4-' +
-          'c600dfb83432","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number":4},{"device_id":"15a82a' +
-          'aa-0d9e-4083-a32d-2352191877e6","user_id":"15a82aaa-0d9e-4083-a32d-2352191877e6","timestamp":1455744746295,' +
-          '"event_id":3,"session_id":1455744733865,"event_type":"clicked","version_name":"Web","platform":"Web",' +
-          '"os_name":"Chrome","os_version":"48","device_model":"Mac","language":"en-US","api_properties":{},' +
-          '"event_properties":{"10":"false","bool":true,"null":null,"string":"test","array":' +
-          '[0,1,2,"3"],"nested_array":["a",{"key":"value"},["b"]],"object":{"key":"value"},"nested_object":' +
-          '{"k":"v","l":[0,1],"o":{"k2":"v2","l2":["e2",{"k3":"v3"}]}}},"user_properties":{},"uuid":"650407a1-d705-' +
-          '47a0-8918-b4530ce51f89","library":{"name":"amplitude-js","version":"2.9.0"},"sequence_number":5}]';
-      localStorage.setItem('amplitude_unsent_' + apiKey, existingEvents);
-
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey, null, {
-        batchEvents: true
-      });
-
-      var expected = {
-        '10': 'false',
-        'bool': true,
-        'string': 'test',
-        'array': [0, 1, 2, '3'],
-        'nested_array': ['a', {'key':'value'}],
-        'object': {
-          'key': 'value'
-        },
-        'nested_object': {
-          'k': 'v',
-          'l': [0, 1],
-          'o': {
-              'k2': 'v2',
-              'l2': ['e2', {'k3':'v3'}]
-          }
-        }
-      }
-
-      // check that event loaded into memory
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents[0].event_properties, {});
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents[1].event_properties, expected);
     });
   });
 
@@ -1139,24 +801,6 @@ describe('setVersionName', function() {
       assert.deepEqual(events[3].event_properties, {index: 100});
     });
 
-    it('should limit events queued', function() {
-      amplitude.init(apiKey, null, {savedMaxCount: 10});
-
-      amplitude.getInstance()._sending = true;
-      for (var i = 0; i < 15; i++) {
-        amplitude.logEvent('Event', {index: i});
-      }
-      amplitude.getInstance()._sending = false;
-
-      amplitude.logEvent('Event', {index: 100});
-
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 10);
-      assert.deepEqual(events[0].event_properties, {index: 6});
-      assert.deepEqual(events[9].event_properties, {index: 100});
-    });
-
     it('should remove only sent events', function() {
       amplitude.getInstance()._sending = true;
       amplitude.logEvent('Event', {index: 1});
@@ -1173,17 +817,6 @@ describe('setVersionName', function() {
       var events = JSON.parse(queryString.parse(server.requests[1].requestBody).e);
       assert.lengthOf(events, 1);
       assert.deepEqual(events[0].event_properties, {index: 4});
-    });
-
-    it('should save events', function() {
-      amplitude.init(apiKey, null, {saveEvents: true});
-      amplitude.logEvent('Event', {index: 1});
-      amplitude.logEvent('Event', {index: 2});
-      amplitude.logEvent('Event', {index: 3});
-
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey);
-      assert.deepEqual(amplitude2.getInstance()._unsentEvents, amplitude.getInstance()._unsentEvents);
     });
 
     it('should not save events', function() {
@@ -1589,107 +1222,6 @@ describe('setVersionName', function() {
       assert.equal(message, 'Not found');
     });
 
-    it('should send 3 identify events', function() {
-      amplitude.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 3});
-      assert.equal(amplitude.getInstance()._unsentCount(), 0);
-
-      amplitude.identify(new Identify().add('photoCount', 1));
-      amplitude.identify(new Identify().add('photoCount', 1).set('country', 'USA'));
-      amplitude.identify(new Identify().add('photoCount', 1));
-
-      // verify some internal counters
-      assert.equal(amplitude.getInstance()._eventId, 0);
-      assert.equal(amplitude.getInstance()._identifyId, 3);
-      assert.equal(amplitude.getInstance()._unsentCount(), 3);
-      assert.lengthOf(amplitude.getInstance()._unsentEvents, 0);
-      assert.lengthOf(amplitude.getInstance()._unsentIdentifys, 3);
-
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 3);
-      for (var i = 0; i < 3; i++) {
-        assert.equal(events[i].event_type, '$identify');
-        assert.isTrue('$add' in events[i].user_properties);
-        assert.deepEqual(events[i].user_properties['$add'], {'photoCount': 1});
-        assert.equal(events[i].event_id, i+1);
-        assert.equal(events[i].sequence_number, i+1);
-      }
-
-      // send response and check that remove events works properly
-      server.respondWith('success');
-      server.respond();
-      assert.equal(amplitude.getInstance()._unsentCount(), 0);
-      assert.lengthOf(amplitude.getInstance()._unsentIdentifys, 0);
-    });
-
-    it('should send 3 events', function() {
-      amplitude.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 3});
-      assert.equal(amplitude.getInstance()._unsentCount(), 0);
-
-      amplitude.logEvent('test');
-      amplitude.logEvent('test');
-      amplitude.logEvent('test');
-
-      // verify some internal counters
-      assert.equal(amplitude.getInstance()._eventId, 3);
-      assert.equal(amplitude.getInstance()._identifyId, 0);
-      assert.equal(amplitude.getInstance()._unsentCount(), 3);
-      assert.lengthOf(amplitude.getInstance()._unsentEvents, 3);
-      assert.lengthOf(amplitude.getInstance()._unsentIdentifys, 0);
-
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 3);
-      for (var i = 0; i < 3; i++) {
-        assert.equal(events[i].event_type, 'test');
-        assert.equal(events[i].event_id, i+1);
-        assert.equal(events[i].sequence_number, i+1);
-      }
-
-      // send response and check that remove events works properly
-      server.respondWith('success');
-      server.respond();
-      assert.equal(amplitude.getInstance()._unsentCount(), 0);
-      assert.lengthOf(amplitude.getInstance()._unsentEvents, 0);
-    });
-
-    it('should send 1 event and 1 identify event', function() {
-      amplitude.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 2});
-      assert.equal(amplitude.getInstance()._unsentCount(), 0);
-
-      amplitude.logEvent('test');
-      amplitude.identify(new Identify().add('photoCount', 1));
-
-      // verify some internal counters
-      assert.equal(amplitude.getInstance()._eventId, 1);
-      assert.equal(amplitude.getInstance()._identifyId, 1);
-      assert.equal(amplitude.getInstance()._unsentCount(), 2);
-      assert.lengthOf(amplitude.getInstance()._unsentEvents, 1);
-      assert.lengthOf(amplitude.getInstance()._unsentIdentifys, 1);
-
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 2);
-
-      // event should come before identify - maintain order using sequence number
-      assert.equal(events[0].event_type, 'test');
-      assert.equal(events[0].event_id, 1);
-      assert.deepEqual(events[0].user_properties, {});
-      assert.equal(events[0].sequence_number, 1);
-      assert.equal(events[1].event_type, '$identify');
-      assert.equal(events[1].event_id, 1);
-      assert.isTrue('$add' in events[1].user_properties);
-      assert.deepEqual(events[1].user_properties['$add'], {'photoCount': 1});
-      assert.equal(events[1].sequence_number, 2);
-
-      // send response and check that remove events works properly
-      server.respondWith('success');
-      server.respond();
-      assert.equal(amplitude.getInstance()._unsentCount(), 0);
-      assert.lengthOf(amplitude.getInstance()._unsentEvents, 0);
-      assert.lengthOf(amplitude.getInstance()._unsentIdentifys, 0);
-    });
-
     it('should properly coalesce events and identify events into a request', function() {
       amplitude.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 6});
       assert.equal(amplitude.getInstance()._unsentCount(), 0);
@@ -1871,34 +1403,6 @@ describe('setVersionName', function() {
       assert.lengthOf(event.user_properties['$set']['key'], 4096);
     });
 
-    it('should increment the counters in local storage if cookies disabled', function() {
-      localStorage.clear();
-      var deviceId = 'test_device_id';
-      var amplitude2 = new Amplitude();
-
-      sinon.stub(CookieStorage.prototype, '_cookiesEnabled').returns(false);
-      amplitude2.init(apiKey, null, {deviceId: deviceId, batchEvents: true, eventUploadThreshold: 5});
-      CookieStorage.prototype._cookiesEnabled.restore();
-
-      amplitude2.logEvent('test');
-      clock.tick(10); // starts the session
-      amplitude2.logEvent('test2');
-      clock.tick(20);
-      amplitude2.setUserProperties({'key':'value'}); // identify event at time 30
-
-      var cookieData = JSON.parse(localStorage.getItem('amp_cookiestore_amplitude_id_' + apiKey));
-      assert.deepEqual(cookieData, {
-        'deviceId': deviceId,
-        'userId': null,
-        'optOut': false,
-        'sessionId': 10,
-        'lastEventTime': 30,
-        'eventId': 2,
-        'identifyId': 1,
-        'sequenceNumber': 3
-      });
-    });
-
     it('should validate event properties', function() {
       var e = new Error('oops');
       clock.tick(1);
@@ -1954,31 +1458,6 @@ describe('setVersionName', function() {
       amplitude.identify(identify);
 
       assert.deepEqual(amplitude.getInstance()._unsentIdentifys[0].user_properties, {'$set': {'10': 10}});
-    });
-
-    it('should synchronize event data across multiple amplitude instances that share the same cookie', function() {
-      // this test fails if logEvent does not reload cookie data every time
-      var amplitude1 = new Amplitude();
-      amplitude1.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 5});
-      var amplitude2 = new Amplitude();
-      amplitude2.init(apiKey, null, {batchEvents: true, eventUploadThreshold: 5});
-
-      amplitude1.logEvent('test1');
-      amplitude2.logEvent('test2');
-      amplitude1.logEvent('test3');
-      amplitude2.logEvent('test4');
-      amplitude2.identify(new amplitude2.Identify().set('key', 'value'));
-      amplitude1.logEvent('test5');
-
-      // the event ids should all be sequential since amplitude1 and amplitude2 have synchronized cookies
-      var eventId = amplitude1.getInstance()._unsentEvents[0]['event_id'];
-      assert.equal(amplitude2.getInstance()._unsentEvents[0]['event_id'], eventId + 1);
-      assert.equal(amplitude1.getInstance()._unsentEvents[1]['event_id'], eventId + 2);
-      assert.equal(amplitude2.getInstance()._unsentEvents[1]['event_id'], eventId + 3);
-
-      var sequenceNumber = amplitude1.getInstance()._unsentEvents[0]['sequence_number'];
-      assert.equal(amplitude2.getInstance()._unsentIdentifys[0]['sequence_number'], sequenceNumber + 4);
-      assert.equal(amplitude1.getInstance()._unsentEvents[2]['sequence_number'], sequenceNumber +  5);
     });
 
     it('should handle groups input', function() {
@@ -2079,115 +1558,6 @@ describe('setVersionName', function() {
       amplitude2.init(apiKey);
       assert.strictEqual(amplitude2.options.optOut, true);
     });
-
-    it('should limit identify events queued', function() {
-      amplitude.init(apiKey, null, {savedMaxCount: 10});
-
-      amplitude.getInstance()._sending = true;
-      for (var i = 0; i < 15; i++) {
-        amplitude.identify(new Identify().add('test', i));
-      }
-      amplitude.getInstance()._sending = false;
-
-      amplitude.identify(new Identify().add('test', 100));
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 10);
-      assert.deepEqual(events[0].user_properties, {$add: {'test': 6}});
-      assert.deepEqual(events[9].user_properties, {$add: {'test': 100}});
-    });
-  });
-
-  describe('gatherUtm', function() {
-    var clock;
-    beforeEach(function() {
-      clock = sinon.useFakeTimers();
-      amplitude.init(apiKey);
-    });
-
-    afterEach(function() {
-      clock.restore();
-      reset();
-    });
-
-    it('should not send utm data when the includeUtm flag is false', function() {
-      reset();
-      cookie.set('__utmz', '133232535.1424926227.1.1.utmcct=top&utmccn=new');
-      clock.tick(30 * 60 * 1000 + 1);
-      amplitude.init(apiKey, undefined, {});
-
-      amplitude.setUserProperties({user_prop: true});
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.equal(events[0].user_properties.utm_campaign, undefined);
-      assert.equal(events[0].user_properties.utm_content, undefined);
-      assert.equal(events[0].user_properties.utm_medium, undefined);
-      assert.equal(events[0].user_properties.utm_source, undefined);
-      assert.equal(events[0].user_properties.utm_term, undefined);
-    });
-
-    it('should send utm data via identify when the includeUtm flag is true', function() {
-      reset();
-      cookie.set('__utmz', '133232535.1424926227.1.1.utmcct=top&utmccn=new');
-      clock.tick(30 * 60 * 1000 + 1);
-      amplitude.init(apiKey, undefined, {includeUtm: true, batchEvents: true, eventUploadThreshold: 2});
-
-      amplitude.logEvent('UTM Test Event', {});
-
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.equal(events[0].event_type, '$identify');
-      assert.deepEqual(events[0].user_properties, {
-        '$setOnce': {
-          initial_utm_campaign: 'new',
-          initial_utm_content: 'top'
-        },
-        '$set': {
-          utm_campaign: 'new',
-          utm_content: 'top'
-        }
-      });
-
-      assert.equal(events[1].event_type, 'UTM Test Event');
-      assert.deepEqual(events[1].user_properties, {});
-    });
-
-    it('should parse utm params', function() {
-      reset();
-      cookie.set('__utmz', '133232535.1424926227.1.1.utmcct=top&utmccn=new');
-      var utmParams = '?utm_source=amplitude&utm_medium=email&utm_term=terms';
-      clock.tick(30 * 60 * 1000 + 1);
-      amplitude.getInstance()._initUtmData(utmParams);
-
-      var expectedProperties = {
-          utm_campaign: 'new',
-          utm_content: 'top',
-          utm_medium: 'email',
-          utm_source: 'amplitude',
-          utm_term: 'terms'
-        }
-
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.equal(events[0].event_type, '$identify');
-      assert.deepEqual(events[0].user_properties, {
-        '$setOnce': {
-          initial_utm_campaign: 'new',
-          initial_utm_content: 'top',
-          initial_utm_medium: 'email',
-          initial_utm_source: 'amplitude',
-          initial_utm_term: 'terms'
-        },
-        '$set': expectedProperties
-      });
-      server.respondWith('success');
-      server.respond();
-
-      amplitude.logEvent('UTM Test Event', {});
-      assert.lengthOf(server.requests, 2);
-      var events = JSON.parse(queryString.parse(server.requests[1].requestBody).e);
-      assert.deepEqual(events[0].user_properties, {});
-    });
   });
 
   describe('gatherReferrer', function() {
@@ -2195,12 +1565,10 @@ describe('setVersionName', function() {
     beforeEach(function() {
       clock = sinon.useFakeTimers();
       amplitude.init(apiKey);
-      sinon.stub(amplitude.getInstance(), '_getReferrer').returns('https://amplitude.com/contact');
     });
 
     afterEach(function() {
       clock.restore();
-      amplitude.getInstance()._getReferrer.restore();
       reset();
     });
 
@@ -2213,174 +1581,6 @@ describe('setVersionName', function() {
       var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
       assert.equal(events[0].user_properties.referrer, undefined);
       assert.equal(events[0].user_properties.referring_domain, undefined);
-    });
-
-    it('should only send referrer via identify call when the includeReferrer flag is true', function() {
-      reset();
-      clock.tick(30 * 60 * 1000 + 1);
-      amplitude.init(apiKey, undefined, {includeReferrer: true, batchEvents: true, eventUploadThreshold: 2});
-      amplitude.logEvent('Referrer Test Event', {});
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(events, 2);
-
-      var expected = {
-        'referrer': 'https://amplitude.com/contact',
-        'referring_domain': 'amplitude.com'
-      };
-
-      // first event should be identify with initial_referrer and referrer
-      assert.equal(events[0].event_type, '$identify');
-      assert.deepEqual(events[0].user_properties, {
-        '$set': expected,
-        '$setOnce': {
-          'initial_referrer': 'https://amplitude.com/contact',
-          'initial_referring_domain': 'amplitude.com'
-        }
-      });
-
-      // second event should be the test event with no referrer information
-      assert.equal(events[1].event_type, 'Referrer Test Event');
-      assert.deepEqual(events[1].user_properties, {});
-    });
-  });
-
-  describe('logRevenue', function() {
-    beforeEach(function() {
-      amplitude.init(apiKey);
-    });
-
-    afterEach(function() {
-      reset();
-    });
-
-    /**
-     * Deep compare an object against the api_properties of the
-     * event queued for sending.
-     */
-    function revenueEqual(api, event) {
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.deepEqual(events[0].api_properties, api || {});
-      assert.deepEqual(events[0].event_properties, event || {});
-    }
-
-    it('should log simple amount', function() {
-      amplitude.logRevenue(10.10);
-      revenueEqual({
-        special: 'revenue_amount',
-        price: 10.10,
-        quantity: 1
-      })
-    });
-
-    it('should log complex amount', function() {
-      amplitude.logRevenue(10.10, 7);
-      revenueEqual({
-        special: 'revenue_amount',
-        price: 10.10,
-        quantity: 7
-      })
-    });
-
-    it('shouldn\'t log invalid price', function() {
-      amplitude.logRevenue('kitten', 7);
-      assert.lengthOf(server.requests, 0);
-    });
-
-    it('shouldn\'t log invalid quantity', function() {
-      amplitude.logRevenue(10.00, 'puppy');
-      assert.lengthOf(server.requests, 0);
-    });
-
-    it('should log complex amount with product id', function() {
-      amplitude.logRevenue(10.10, 7, 'chicken.dinner');
-      revenueEqual({
-        special: 'revenue_amount',
-        price: 10.10,
-        quantity: 7,
-        productId: 'chicken.dinner'
-      });
-    });
-  });
-
-  describe('logRevenueV2', function() {
-    beforeEach(function() {
-      reset();
-      amplitude.init(apiKey);
-    });
-
-    afterEach(function() {
-      reset();
-    });
-
-    it('should log with the Revenue object', function () {
-      // ignore invalid revenue objects
-      amplitude.logRevenueV2(null);
-      assert.lengthOf(server.requests, 0);
-      amplitude.logRevenueV2({});
-      assert.lengthOf(server.requests, 0);
-      amplitude.logRevenueV2(new amplitude.Revenue());
-
-      // log valid revenue object
-      var productId = 'testProductId';
-      var quantity = 15;
-      var price = 10.99;
-      var revenueType = 'testRevenueType'
-      var properties = {'city': 'San Francisco'};
-
-      var revenue = new amplitude.Revenue().setProductId(productId).setQuantity(quantity).setPrice(price);
-      revenue.setRevenueType(revenueType).setEventProperties(properties);
-
-      amplitude.logRevenueV2(revenue);
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.equal(events.length, 1);
-      var event = events[0];
-      assert.equal(event.event_type, 'revenue_amount');
-
-      assert.deepEqual(event.event_properties, {
-        '$productId': productId,
-        '$quantity': quantity,
-        '$price': price,
-        '$revenueType': revenueType,
-        'city': 'San Francisco'
-      });
-
-      // verify user properties empty
-      assert.deepEqual(event.user_properties, {});
-
-      // verify no revenue data in api_properties
-      assert.deepEqual(event.api_properties, {});
-    });
-
-    it('should convert proxied Revenue object into real revenue object', function() {
-      var fakeRevenue = {'_q':[
-        ['setProductId', 'questionable'],
-        ['setQuantity', 10],
-        ['setPrice', 'key1']  // invalid price type, this will fail to generate revenue event
-      ]};
-      amplitude.logRevenueV2(fakeRevenue);
-      assert.lengthOf(server.requests, 0);
-
-      var proxyRevenue = {'_q':[
-        ['setProductId', 'questionable'],
-        ['setQuantity', 15],
-        ['setPrice', 10.99],
-        ['setRevenueType', 'purchase']
-      ]};
-      amplitude.logRevenueV2(proxyRevenue);
-      assert.lengthOf(server.requests, 1);
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      var event = events[0];
-      assert.equal(event.event_type, 'revenue_amount');
-
-      assert.deepEqual(event.event_properties, {
-        '$productId': 'questionable',
-        '$quantity': 15,
-        '$price': 10.99,
-        '$revenueType': 'purchase'
-      });
     });
   });
 

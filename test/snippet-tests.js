@@ -26,14 +26,6 @@ describe('Snippet', function() {
     assert.deepEqual(identify._q[3], ['setOnce', 'key4', 'value2']);
   });
 
-  it('amplitude object should proxy Revenue object and calls', function() {
-    var revenue = new amplitude.Revenue().setProductId('productIdentifier').setQuantity(5).setPrice(10.99);
-    assert.lengthOf(revenue._q, 3);
-    assert.deepEqual(revenue._q[0], ['setProductId', 'productIdentifier']);
-    assert.deepEqual(revenue._q[1], ['setQuantity', 5]);
-    assert.deepEqual(revenue._q[2], ['setPrice', 10.99]);
-  });
-
   it('amplitude object should proxy instance functions', function() {
     amplitude.getInstance(null).init('API_KEY');
     amplitude.getInstance('$DEFAULT_instance').logEvent('Click');
