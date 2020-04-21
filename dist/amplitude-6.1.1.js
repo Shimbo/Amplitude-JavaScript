@@ -2788,7 +2788,7 @@
     );
   };
 
-  var version = "6.1.0";
+  var version = "6.1.1";
 
   var getLanguage = function getLanguage() {
     return navigator && (navigator.languages && navigator.languages[0] || navigator.language || navigator.userLanguage) || undefined;
