@@ -8,3 +8,4 @@ import './identify.js';
 import './amplitude.js';
 import './amplitude-client.js';
 import './utils.js';
+import './base64Id.js';
