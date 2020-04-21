@@ -6,7 +6,6 @@ export default {
   apiEndpoint: 'api.amplitude.com',
   batchEvents: false,
   cookieExpiration: 365 * 10,
-  cookieName: 'amplitude_id',
   path: '/',
   eventUploadPeriodMillis: 30 * 1000, // 30s
   eventUploadThreshold: 30,

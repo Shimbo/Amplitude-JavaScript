@@ -1,6 +1,6 @@
 import Constants from './constants';
-import cookieStorage from './cookiestorage';
 import base64Id from './base64Id';
+import MetadataStorage from './metadata-storage';
 import Identify from './identify';
 import md5 from 'blueimp-md5';
 import Request from './xhr';
@@ -25,7 +25,6 @@ var AmplitudeClient = function AmplitudeClient(instanceName) {
   this._unsentIdentifys = [];
   this._ua = new UAParser(navigator.userAgent).getResult();
   this.options = {...DEFAULT_OPTIONS, trackingOptions: {...DEFAULT_OPTIONS.trackingOptions}};
-  this.cookieStorage = new cookieStorage().getStorage();
   this._q = []; // queue for proxied functions before script load
   this._sending = false;
   this._updateScheduled = false;
@@ -63,16 +62,18 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
   }
 
   try {
-    this.options.apiKey = apiKey;
-    this._storageSuffix = '_' + apiKey + this._legacyStorageSuffix;
-
-    var hasExistingCookie = !!this.cookieStorage.get(this.options.cookieName + this._storageSuffix);
-    if (opt_config && opt_config.deferInitialization && !hasExistingCookie) {
-      this._deferInitialization(apiKey, opt_userId, opt_config, opt_callback);
-      return;
-    }
-
     _parseConfig(this.options, opt_config);
+
+    this.options.apiKey = apiKey;
+    this._storageSuffixV5 = apiKey.slice(0,6);
+    this._cookieName = Constants.COOKIE_PREFIX + '_' + this._storageSuffixV5;
+
+    this._metadataStorage = new MetadataStorage({
+      storageKey: this._cookieName,
+      expirationDays: this.options.cookieExpiration,
+      secure: this.options.secureCookie,
+      path: this.options.path,
+    });
 
     if (type(this.options.logLevel) === 'string') {
       utils.setLogLevel(this.options.logLevel);
@@ -80,12 +81,6 @@ AmplitudeClient.prototype.init = function init(apiKey, opt_userId, opt_config, o
 
     var trackingOptions = _generateApiPropertiesTrackingConfig(this);
     this._apiPropertiesTrackingOptions = Object.keys(trackingOptions).length > 0 ? {tracking_options: trackingOptions} : {};
-
-    this.cookieStorage.options({
-      expirationDays: this.options.cookieExpiration,
-      secure: this.options.secureCookie,
-      path: this.options.path,
-    });
 
     _loadCookieData(this);
     this._pendingReadStorage = true;
@@ -319,17 +314,11 @@ AmplitudeClient.prototype._setInStorage = function _setInStorage(storage, key, v
  * @private
  */
 var _loadCookieData = function _loadCookieData(scope) {
-  var cookieData = scope.cookieStorage.get(scope.options.cookieName + scope._storageSuffix);
-
-  if (type(cookieData) === 'object') {
-    _loadCookieDataProps(scope, cookieData);
-  } else {
-    var legacyCookieData = scope.cookieStorage.get(scope.options.cookieName + scope._legacyStorageSuffix);
-    if (type(legacyCookieData) === 'object') {
-      scope.cookieStorage.remove(scope.options.cookieName + scope._legacyStorageSuffix);
-      _loadCookieDataProps(scope, legacyCookieData);
-    }
+  const props = scope._metadataStorage.load();
+  if (type(props) === 'object') {
+    _loadCookieDataProps(scope, props);
   }
+  return;
 };
 
 var _loadCookieDataProps = function _loadCookieDataProps(scope, cookieData) {
@@ -346,19 +335,19 @@ var _loadCookieDataProps = function _loadCookieDataProps(scope, cookieData) {
     }
   }
   if (cookieData.sessionId) {
-    scope._sessionId = parseInt(cookieData.sessionId);
+    scope._sessionId = cookieData.sessionId;
   }
   if (cookieData.lastEventTime) {
-    scope._lastEventTime = parseInt(cookieData.lastEventTime);
+    scope._lastEventTime = cookieData.lastEventTime;
   }
   if (cookieData.eventId) {
-    scope._eventId = parseInt(cookieData.eventId);
+    scope._eventId = cookieData.eventId;
   }
   if (cookieData.identifyId) {
-    scope._identifyId = parseInt(cookieData.identifyId);
+    scope._identifyId = cookieData.identifyId;
   }
   if (cookieData.sequenceNumber) {
-    scope._sequenceNumber = parseInt(cookieData.sequenceNumber);
+    scope._sequenceNumber = cookieData.sequenceNumber;
   }
 };
 
@@ -377,7 +366,7 @@ var _saveCookieData = function _saveCookieData(scope) {
     identifyId: scope._identifyId,
     sequenceNumber: scope._sequenceNumber
   };
-  scope.cookieStorage.set(scope.options.cookieName + scope._storageSuffix, cookieData);
+  scope._metadataStorage.save(cookieData);
 };
 
 /**
@@ -1103,16 +1092,6 @@ AmplitudeClient.prototype.__VERSION__ = version;
  */
 AmplitudeClient.prototype._shouldDeferCall = function _shouldDeferCall() {
   return this._pendingReadStorage || this._initializationDeferred;
-};
-
-/**
- * Defers Initialization by putting all functions into storage until users
- * have accepted terms for tracking
- * @private
- */
-AmplitudeClient.prototype._deferInitialization = function _deferInitialization() {
-  this._initializationDeferred = true;
-  this._q.push(['init'].concat(Array.prototype.slice.call(arguments, 0)));
 };
 
 /**

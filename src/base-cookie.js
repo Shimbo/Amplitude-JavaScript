@@ -32,7 +32,9 @@ const set = (name, value, opts) => {
   if (expires) {
     str += '; expires=' + expires.toUTCString();
   }
-  str += '; path=' + opts.path;
+  if (opts.path) {
+    str += '; path=' + opts.path;
+  }
   if (opts.secure) {
     str += '; Secure';
   }

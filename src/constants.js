@@ -20,5 +20,5 @@ export default {
 
   COOKIE_TEST: 'amplitude_cookie_test',
 
-  AMP_DEVICE_ID_PARAM: 'amp_device_id',  // url param
+  COOKIE_PREFIX: "amp",
 };

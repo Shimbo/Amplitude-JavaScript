@@ -1,4 +1,5 @@
 import Amplitude from '../src/amplitude.js';
+import MetadataStorage from '../src/metadata-storage';
 import cookie from '../src/cookie.js';
 import queryString from 'query-string';
 import Identify from '../src/identify.js';
@@ -6,6 +7,7 @@ import Identify from '../src/identify.js';
 // maintain for testing backwards compatability
 describe('Amplitude', function() {
   var apiKey = '000000';
+  const cookieName = 'amp_' + apiKey.slice(0,6);
   var keySuffix = '_' + apiKey.slice(0,6);
   var userId = 'user';
   var amplitude;
@@ -31,6 +33,9 @@ describe('Amplitude', function() {
     cookie.remove(amplitude.options.cookieName + '_' + apiKey);
     cookie.remove(amplitude.options.cookieName + '_1_app1');
     cookie.remove(amplitude.options.cookieName + '_2_app2');
+    cookie.remove(cookieName);
+    cookie.remove('amp_1');
+    cookie.remove('amp_2');
     cookie.reset();
   }
 
@@ -132,13 +137,13 @@ describe('Amplitude', function() {
       assert.equal(JSON.parse(queryString.parse(server.requests[2].requestBody).client), 2);
 
       // verify separate cookie data
-      var cookieData = cookie.get(amplitude.options.cookieName + '_' + apiKey);
+      var cookieData = amplitude.getInstance()._metadataStorage.load();
       assert.equal(cookieData.deviceId, amplitude.options.deviceId);
 
-      var cookieData1 = cookie.get(app1.options.cookieName + '_1_app1');
+      var cookieData1 = app1._metadataStorage.load();
       assert.equal(cookieData1.deviceId, app1.options.deviceId);
 
-      var cookieData2 = cookie.get(app2.options.cookieName + '_2_app2');
+      var cookieData2 = app2._metadataStorage.load();
       assert.equal(cookieData2.deviceId, app2.options.deviceId);
     });
 
@@ -155,7 +160,8 @@ describe('Amplitude', function() {
         identifyId: 60,
         sequenceNumber: 70
       }
-      cookie.set(amplitude.options.cookieName + '_' + apiKey, cookieData);
+      const storage = new MetadataStorage({storageKey: cookieName});
+      storage.save(cookieData);
 
       // default instance loads from existing cookie
       var app = amplitude.getInstance();
@@ -241,7 +247,6 @@ describe('Amplitude', function() {
       assert.equal(amplitude.options.apiEndpoint, 'api.amplitude.com');
       assert.equal(amplitude.options.batchEvents, false);
       assert.equal(amplitude.options.cookieExpiration, 3650);
-      assert.equal(amplitude.options.cookieName, 'amplitude_id');
       assert.equal(amplitude.options.eventUploadPeriodMillis, 30000);
       assert.equal(amplitude.options.eventUploadThreshold, 30);
       assert.equal(amplitude.options.bogusKey, undefined);
@@ -249,7 +254,7 @@ describe('Amplitude', function() {
 
     it('should set cookie', function() {
       amplitude.init(apiKey, userId);
-      var stored = cookie.get(amplitude.options.cookieName + '_' + apiKey);
+      var stored = amplitude.getInstance()._metadataStorage.load();
       assert.property(stored, 'deviceId');
       assert.propertyVal(stored, 'userId', userId);
       assert.lengthOf(stored.deviceId, 22);
@@ -309,7 +314,10 @@ describe('Amplitude', function() {
         identifyId: 60,
         sequenceNumber: 70
       }
-      cookie.set(amplitude2.options.cookieName, cookieData);
+
+      new MetadataStorage({
+        storageKey: cookieName,
+      }).save(cookieData);
 
       clock.tick(10);
       amplitude2.init(apiKey);
@@ -533,7 +541,7 @@ describe('setVersionName', function() {
     it('should store device id in cookie', function() {
       amplitude.init(apiKey, null, {'deviceId': 'fakeDeviceId'});
       amplitude.setDeviceId('deviceId');
-      var stored = cookie.get(amplitude.options.cookieName + '_' + apiKey);
+      var stored = amplitude.getInstance()._metadataStorage.load();
       assert.propertyVal(stored, 'deviceId', 'deviceId');
     });
   });

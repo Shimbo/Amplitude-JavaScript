@@ -4,10 +4,12 @@ import utils from '../src/utils.js';
 import queryString from 'query-string';
 import Identify from '../src/identify.js';
 import constants from '../src/constants.js';
+import MetadataStorage from '../src/metadata-storage.js';
 
 // maintain for testing backwards compatability
 describe('AmplitudeClient', function() {
   var apiKey = '000000';
+  const cookieName = 'amp_' + apiKey.slice(0,6);
   var keySuffix = '_' + apiKey.slice(0,6);
   var userId = 'user';
   var amplitude;
@@ -32,6 +34,8 @@ describe('AmplitudeClient', function() {
     cookie.remove(amplitude.options.cookieName);
     cookie.remove(amplitude.options.cookieName + keySuffix);
     cookie.remove(amplitude.options.cookieName + '_new_app');
+    cookie.remove(cookieName);
+    cookie.remove('amp_');
     cookie.reset();
   }
 
@@ -130,7 +134,6 @@ describe('AmplitudeClient', function() {
       assert.equal(amplitude.options.apiEndpoint, 'api.amplitude.com');
       assert.equal(amplitude.options.batchEvents, false);
       assert.equal(amplitude.options.cookieExpiration, 3650);
-      assert.equal(amplitude.options.cookieName, 'amplitude_id');
       assert.equal(amplitude.options.eventUploadPeriodMillis, 30000);
       assert.equal(amplitude.options.eventUploadThreshold, 30);
       assert.equal(amplitude.options.bogusKey, undefined);
@@ -154,7 +157,8 @@ describe('AmplitudeClient', function() {
 
     it('should set cookie', function() {
       amplitude.init(apiKey, userId);
-      var stored = cookie.get(amplitude.options.cookieName + '_' + apiKey);
+      const storage = new MetadataStorage({storageKey: cookieName});
+      const stored = storage.load();
       assert.property(stored, 'deviceId');
       assert.propertyVal(stored, 'userId', userId);
       assert.lengthOf(stored.deviceId, 22); // increase deviceId length by 1 for 'R' character
@@ -190,28 +194,12 @@ describe('AmplitudeClient', function() {
         deviceId: 'current_device_id',
       }
 
-      cookie.set(amplitude.options.cookieName + '_' + apiKey, cookieData);
+
+      const storage = new MetadataStorage({storageKey: cookieName});
+      storage.save(cookieData);
 
       amplitude.init(apiKey);
       assert.equal(amplitude.options.deviceId, 'current_device_id');
-    });
-
-    it('should migrate device id from old non name spaced cookie name (pre 4.10)', function(){
-      var now = new Date().getTime();
-
-      var cookieData = {
-        deviceId: 'old_device_id',
-        optOut: false,
-        sessionId: now,
-        lastEventTime: now,
-        eventId: 50,
-        identifyId: 60
-      }
-
-      cookie.set(amplitude.options.cookieName, cookieData);
-
-      amplitude.init(apiKey);
-      assert.equal(amplitude.options.deviceId, 'old_device_id');
     });
 
     it('should merge tracking options during parseConfig', function() {
@@ -472,8 +460,9 @@ describe('setVersionName', function() {
     it('should store device id in cookie', function() {
       amplitude.init(apiKey, null, {'deviceId': 'fakeDeviceId'});
       amplitude.setDeviceId('deviceId');
-      var stored = cookie.get(amplitude.options.cookieName + '_' + apiKey);
-      assert.propertyVal(stored, 'deviceId', 'deviceId');
+      const storage = new MetadataStorage({storageKey: cookieName});
+      const cookieData = storage.load();
+      assert.propertyVal(cookieData, 'deviceId', 'deviceId');
     });
   });
 
@@ -1975,103 +1964,6 @@ describe('setVersionName', function() {
       assert.equal(amplitude2._sessionId, timestamp);
       assert.equal(amplitude2.getSessionId(), timestamp);
       assert.equal(amplitude2.getSessionId(), amplitude2._sessionId);
-    });
-  });
-
-  describe('deferInitialization config', function () {
-    it('should keep tracking users who already have an amplitude cookie', function () {
-      var now = new Date().getTime();
-      var cookieData = {
-        userId: 'test_user_id',
-        optOut: false,
-        sessionId: now,
-        lastEventTime: now,
-        eventId: 50,
-        identifyId: 60
-      }
-
-      cookie.set(amplitude.options.cookieName + keySuffix, cookieData);
-      amplitude.init(apiKey, null, { cookieExpiration: 365, deferInitialization: true });
-      amplitude.identify(new Identify().set('prop1', 'value1'));
-
-      var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-      assert.lengthOf(server.requests, 1, 'should have sent a request to Amplitude');
-      assert.equal(events[0].event_type, '$identify');
-    });
-    describe('prior to opting into analytics', function () {
-      beforeEach(function () {
-        reset();
-        amplitude.init(apiKey, null, { cookieExpiration: 365, deferInitialization: true });
-      });
-      it('should not initially drop a cookie if deferInitialization is set to true', function () {
-        var cookieData = cookie.get(amplitude.options.cookieName + '_' + apiKey);
-        assert.isNull(cookieData);
-      });
-      it('should not send anything to amplitude', function () {
-        amplitude.identify(new Identify().set('prop1', 'value1'));
-        amplitude.logEvent('Event Type 1');
-        amplitude.setUserId(123456);
-        amplitude.setGroup('orgId', 15);
-        amplitude.setOptOut(true);
-        amplitude.regenerateDeviceId();
-        amplitude.setDeviceId('deviceId');
-        amplitude.setUserProperties({'prop': true, 'key': 'value'});
-        amplitude.clearUserProperties();
-        amplitude.groupIdentify(null, null, new amplitude.Identify().set('key', 'value'));
-        amplitude.setVersionName('testVersionName1');
-        amplitude.logEventWithTimestamp('test', null, 2000, null);
-        amplitude.logEventWithGroups('Test', {'key': 'value' }, {group: 'abc'});
-
-        assert.lengthOf(server.requests, 0, 'should not send any requests to amplitude');
-        assert.lengthOf(amplitude._unsentEvents, 0, 'should not queue events to be sent')
-      });
-    });
-
-    describe('upon opting into analytics', function () {
-      beforeEach(function () {
-        reset();
-        amplitude.init(apiKey, null, { cookieExpiration: 365, deferInitialization: true });
-      });
-      it('should drop a cookie', function () {
-        amplitude.enableTracking();
-        var cookieData = cookie.get(amplitude.options.cookieName + '_' + apiKey);
-        assert.isNotNull(cookieData);
-      });
-      it('should send pending calls and events', function () {
-        amplitude.identify(new Identify().set('prop1', 'value1'));
-        amplitude.logEvent('Event Type 1');
-        amplitude.logEvent('Event Type 2');
-        amplitude.logEventWithTimestamp('test', null, 2000, null);
-        assert.lengthOf(amplitude._unsentEvents, 0, 'should not have any pending events to be sent');
-        amplitude.enableTracking();
-
-        assert.lengthOf(server.requests, 1, 'should have sent a request to Amplitude');
-        var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-        assert.lengthOf(events, 1, 'should have sent a request to Amplitude');
-        assert.lengthOf(amplitude._unsentEvents, 3, 'should have saved the remaining events')
-      });
-      it('should send new events', function () {
-        assert.lengthOf(amplitude._unsentEvents, 0, 'should start with no pending events to be sent');
-        amplitude.identify(new Identify().set('prop1', 'value1'));
-        amplitude.logEvent('Event Type 1');
-        amplitude.logEvent('Event Type 2');
-        amplitude.logEventWithTimestamp('test', null, 2000, null);
-        assert.lengthOf(amplitude._unsentEvents, 0, 'should not have any pending events to be sent');
-
-        amplitude.enableTracking();
-        assert.lengthOf(amplitude._unsentEvents, 3, 'should have saved the remaining events')
-
-        amplitude.logEvent('Event Type 3');
-        assert.lengthOf(amplitude._unsentEvents, 4, 'should save the new events')
-      });
-      it('should not continue to deferInitialization if an amplitude cookie exists', function () {
-        amplitude.enableTracking();
-        amplitude.init(apiKey, null, { cookieExpiration: 365, deferInitialization: true });
-        amplitude.logEvent('Event Type 1');
-
-        var events = JSON.parse(queryString.parse(server.requests[0].requestBody).e);
-        assert.lengthOf(events, 1, 'should have sent a request to Amplitude');
-      });
     });
   });
 });

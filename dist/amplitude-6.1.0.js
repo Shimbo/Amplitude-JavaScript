@@ -18,6 +18,28 @@
     return _typeof(obj);
   }
 
+  function _classCallCheck(instance, Constructor) {
+    if (!(instance instanceof Constructor)) {
+      throw new TypeError("Cannot call a class as a function");
+    }
+  }
+
+  function _defineProperties(target, props) {
+    for (var i = 0; i < props.length; i++) {
+      var descriptor = props[i];
+      descriptor.enumerable = descriptor.enumerable || false;
+      descriptor.configurable = true;
+      if ("value" in descriptor) descriptor.writable = true;
+      Object.defineProperty(target, descriptor.key, descriptor);
+    }
+  }
+
+  function _createClass(Constructor, protoProps, staticProps) {
+    if (protoProps) _defineProperties(Constructor.prototype, protoProps);
+    if (staticProps) _defineProperties(Constructor, staticProps);
+    return Constructor;
+  }
+
   function _defineProperty(obj, key, value) {
     if (key in obj) {
       Object.defineProperty(obj, key, {
@@ -70,8 +92,19 @@
     OPT_OUT: 'amplitude_optOut',
     USER_ID: 'amplitude_userId',
     COOKIE_TEST: 'amplitude_cookie_test',
-    AMP_DEVICE_ID_PARAM: 'amp_device_id' // url param
+    COOKIE_PREFIX: "amp"
+  };
 
+  var base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+  var base64Id = function base64Id() {
+    var str = '';
+
+    for (var i = 0; i < 22; ++i) {
+      str += base64Chars.charAt(Math.floor(Math.random() * 64));
+    }
+
+    return str;
   };
 
   /* jshint bitwise: false */
@@ -254,7 +287,9 @@
       str += '; expires=' + expires.toUTCString();
     }
 
-    str += '; path=' + opts.path;
+    if (opts.path) {
+      str += '; path=' + opts.path;
+    }
 
     if (opts.secure) {
       str += '; Secure';
@@ -268,89 +303,82 @@
     get: get
   };
 
-  /*
-   * Cookie data
-   */
-  var _options = {
-    expirationDays: undefined,
-    path: '/'
-  };
+  var MetadataStorage =
+  /*#__PURE__*/
+  function () {
+    function MetadataStorage(_ref) {
+      var storageKey = _ref.storageKey,
+          secure = _ref.secure,
+          expirationDays = _ref.expirationDays,
+          path = _ref.path;
 
-  var reset = function reset() {
-    _options = {
-      expirationDays: undefined,
-      path: '/'
-    };
-  };
+      _classCallCheck(this, MetadataStorage);
 
-  var options = function options(opts) {
-    if (arguments.length === 0) {
-      return _options;
+      this.storageKey = storageKey;
+      this.secure = secure;
+      this.expirationDays = expirationDays;
+      this.path = path;
     }
 
-    opts = opts || {};
-    _options.expirationDays = opts.expirationDays;
-    _options.secure = opts.secure;
-    _options.path = opts.path;
-    return _options;
-  };
-
-  var get$1 = function get(name) {
-    var nameEq = name + '=';
-    var value = baseCookie.get(nameEq);
-
-    try {
-      if (value) {
-        return JSON.parse(Base64.decode(value));
+    _createClass(MetadataStorage, [{
+      key: "getCookieStorageKey",
+      value: function getCookieStorageKey() {
+        return "".concat(this.storageKey);
       }
-    } catch (e) {
-      return null;
-    }
+    }, {
+      key: "save",
+      value: function save(_ref2) {
+        var deviceId = _ref2.deviceId,
+            userId = _ref2.userId,
+            optOut = _ref2.optOut,
+            sessionId = _ref2.sessionId,
+            lastEventTime = _ref2.lastEventTime,
+            eventId = _ref2.eventId,
+            identifyId = _ref2.identifyId,
+            sequenceNumber = _ref2.sequenceNumber;
+        // do not change the order of these items
+        var value = [deviceId, Base64.encode(userId || ''), optOut ? '1' : '', sessionId ? sessionId.toString(32) : '0', lastEventTime ? lastEventTime.toString(32) : '0', eventId ? eventId.toString(32) : '0', identifyId ? identifyId.toString(32) : '0', sequenceNumber ? sequenceNumber.toString(32) : '0'].join('.');
+        baseCookie.set(this.getCookieStorageKey(), value, {
+          secure: this.secure,
+          expirationDays: this.expirationDays,
+          path: this.path
+        });
+      }
+    }, {
+      key: "load",
+      value: function load() {
+        var str = baseCookie.get(this.getCookieStorageKey() + '=');
 
-    return null;
-  };
+        if (!str) {
+          return null;
+        }
 
-  var set$1 = function set(name, value) {
-    try {
-      baseCookie.set(name, Base64.encode(JSON.stringify(value)), _options);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  };
+        var values = str.split('.');
+        var userId = null;
 
-  var remove = function remove(name) {
-    try {
-      baseCookie.set(name, null, _options);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  };
+        if (values[1]) {
+          try {
+            userId = Base64.decode(values[1]);
+          } catch (e) {
+            userId = null;
+          }
+        }
 
-  var Cookie = {
-    reset: reset,
-    options: options,
-    get: get$1,
-    set: set$1,
-    remove: remove
-  };
+        return {
+          deviceId: values[0],
+          userId: userId,
+          optOut: values[2] === '1',
+          sessionId: parseInt(values[3], 32),
+          lastEventTime: parseInt(values[4], 32),
+          eventId: parseInt(values[5], 32),
+          identifyId: parseInt(values[6], 32),
+          sequenceNumber: parseInt(values[7], 32)
+        };
+      }
+    }]);
 
-  /* jshint -W020, unused: false, noempty: false, boss: true */
-
-  var cookieStorage = function cookieStorage() {
-    this.storage = null;
-  };
-
-  cookieStorage.prototype.getStorage = function () {
-    if (this.storage !== null) {
-      return this.storage;
-    } // Whatever cookies enabled or not use cookie storage as default
-
-
-    this.storage = Cookie;
-    return this.storage;
-  };
+    return MetadataStorage;
+  }();
 
   /**
    * toString ref.
@@ -2760,7 +2788,7 @@
     );
   };
 
-  var version = "5.11.0";
+  var version = "6.1.0";
 
   var getLanguage = function getLanguage() {
     return navigator && (navigator.languages && navigator.languages[0] || navigator.language || navigator.userLanguage) || undefined;
@@ -2775,7 +2803,6 @@
     apiEndpoint: 'api.amplitude.com',
     batchEvents: false,
     cookieExpiration: 365 * 10,
-    cookieName: 'amplitude_id',
     path: '/',
     eventUploadPeriodMillis: 30 * 1000,
     // 30s
@@ -2825,7 +2852,6 @@
     this.options = _objectSpread({}, DEFAULT_OPTIONS, {
       trackingOptions: _objectSpread({}, DEFAULT_OPTIONS.trackingOptions)
     });
-    this.cookieStorage = new cookieStorage().getStorage();
     this._q = []; // queue for proxied functions before script load
 
     this._sending = false;
@@ -2864,17 +2890,17 @@
     }
 
     try {
-      this.options.apiKey = apiKey;
-      this._storageSuffix = '_' + apiKey + this._legacyStorageSuffix;
-      var hasExistingCookie = !!this.cookieStorage.get(this.options.cookieName + this._storageSuffix);
-
-      if (opt_config && opt_config.deferInitialization && !hasExistingCookie) {
-        this._deferInitialization(apiKey, opt_userId, opt_config, opt_callback);
-
-        return;
-      }
-
       _parseConfig(this.options, opt_config);
+
+      this.options.apiKey = apiKey;
+      this._storageSuffixV5 = apiKey.slice(0, 6);
+      this._cookieName = constants.COOKIE_PREFIX + '_' + this._storageSuffixV5;
+      this._metadataStorage = new MetadataStorage({
+        storageKey: this._cookieName,
+        expirationDays: this.options.cookieExpiration,
+        secure: this.options.secureCookie,
+        path: this.options.path
+      });
 
       if (type(this.options.logLevel) === 'string') {
         utils.setLogLevel(this.options.logLevel);
@@ -2885,11 +2911,6 @@
       this._apiPropertiesTrackingOptions = Object.keys(trackingOptions).length > 0 ? {
         tracking_options: trackingOptions
       } : {};
-      this.cookieStorage.options({
-        expirationDays: this.options.cookieExpiration,
-        secure: this.options.secureCookie,
-        path: this.options.path
-      });
 
       _loadCookieData(this);
 
@@ -2897,7 +2918,7 @@
 
       var initFromStorage = function initFromStorage(deviceId) {
         // load deviceId and userId from input, or try to fetch existing value from cookie
-        _this.options.deviceId = type(opt_config) === 'object' && type(opt_config.deviceId) === 'string' && !utils.isEmptyString(opt_config.deviceId) && opt_config.deviceId || _this.options.deviceId || deviceId || uuid() + 'R';
+        _this.options.deviceId = type(opt_config) === 'object' && type(opt_config.deviceId) === 'string' && !utils.isEmptyString(opt_config.deviceId) && opt_config.deviceId || _this.options.deviceId || deviceId || base64Id();
         _this.options.userId = type(opt_userId) === 'string' && !utils.isEmptyString(opt_userId) && opt_userId || type(opt_userId) === 'number' && opt_userId.toString() || _this.options.userId || null;
         var now = new Date().getTime();
 
@@ -3140,19 +3161,13 @@
 
 
   var _loadCookieData = function _loadCookieData(scope) {
-    var cookieData = scope.cookieStorage.get(scope.options.cookieName + scope._storageSuffix);
+    var props = scope._metadataStorage.load();
 
-    if (type(cookieData) === 'object') {
-      _loadCookieDataProps(scope, cookieData);
-    } else {
-      var legacyCookieData = scope.cookieStorage.get(scope.options.cookieName + scope._legacyStorageSuffix);
-
-      if (type(legacyCookieData) === 'object') {
-        scope.cookieStorage.remove(scope.options.cookieName + scope._legacyStorageSuffix);
-
-        _loadCookieDataProps(scope, legacyCookieData);
-      }
+    if (type(props) === 'object') {
+      _loadCookieDataProps(scope, props);
     }
+
+    return;
   };
 
   var _loadCookieDataProps = function _loadCookieDataProps(scope, cookieData) {
@@ -3172,23 +3187,23 @@
     }
 
     if (cookieData.sessionId) {
-      scope._sessionId = parseInt(cookieData.sessionId);
+      scope._sessionId = cookieData.sessionId;
     }
 
     if (cookieData.lastEventTime) {
-      scope._lastEventTime = parseInt(cookieData.lastEventTime);
+      scope._lastEventTime = cookieData.lastEventTime;
     }
 
     if (cookieData.eventId) {
-      scope._eventId = parseInt(cookieData.eventId);
+      scope._eventId = cookieData.eventId;
     }
 
     if (cookieData.identifyId) {
-      scope._identifyId = parseInt(cookieData.identifyId);
+      scope._identifyId = cookieData.identifyId;
     }
 
     if (cookieData.sequenceNumber) {
-      scope._sequenceNumber = parseInt(cookieData.sequenceNumber);
+      scope._sequenceNumber = cookieData.sequenceNumber;
     }
   };
   /**
@@ -3208,7 +3223,8 @@
       identifyId: scope._identifyId,
       sequenceNumber: scope._sequenceNumber
     };
-    scope.cookieStorage.set(scope.options.cookieName + scope._storageSuffix, cookieData);
+
+    scope._metadataStorage.save(cookieData);
   };
   /**
    * Sets an identifier for the current user.
@@ -3318,7 +3334,7 @@
       return this._q.push(['regenerateDeviceId'].concat(Array.prototype.slice.call(arguments, 0)));
     }
 
-    this.setDeviceId(uuid() + 'R');
+    this.setDeviceId(base64Id());
   };
   /**
     * Sets a custom deviceId for current user. Note: this is not recommended unless you know what you are doing
@@ -4036,18 +4052,6 @@
 
   AmplitudeClient.prototype._shouldDeferCall = function _shouldDeferCall() {
     return this._pendingReadStorage || this._initializationDeferred;
-  };
-  /**
-   * Defers Initialization by putting all functions into storage until users
-   * have accepted terms for tracking
-   * @private
-   */
-
-
-  AmplitudeClient.prototype._deferInitialization = function _deferInitialization() {
-    this._initializationDeferred = true;
-
-    this._q.push(['init'].concat(Array.prototype.slice.call(arguments, 0)));
   };
   /**
    * Enable tracking via logging events and dropping a cookie
